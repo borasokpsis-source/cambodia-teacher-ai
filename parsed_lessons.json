@@ -1,0 +1,32 @@
+{
+  "science_g7": {
+    "filename": "ថ្នាក់ទី៧៖_វិទ្យាសាស្ត្រ.pdf",
+    "total_pages": 305,
+    "extracted_lines": []
+  },
+  "science_g8": {
+    "filename": "ថ្នាក់ទី៨៖_វិទ្យាសាស្ត្រ.pdf",
+    "total_pages": 305,
+    "extracted_lines": []
+  },
+  "science_g9": {
+    "filename": "ថ្នាក់ទី៩៖_វិទ្យាសាស្ត្រ.pdf",
+    "total_pages": 321,
+    "extracted_lines": []
+  },
+  "biology_g10": {
+    "filename": "សៀវភៅជីវវិទ្យាថ្នាក់ទី_១០.pdf",
+    "total_pages": 123,
+    "extracted_lines": []
+  },
+  "biology_g11": {
+    "filename": "សៀវភៅពុម្ពថ្នាក់ទី១១​_ជីវៈវិទ្យា.pdf",
+    "total_pages": 257,
+    "extracted_lines": []
+  },
+  "biology_g12": {
+    "filename": "សៀវភៅជីវវិទ្យាថ្នាក់ទី១២.pdf",
+    "total_pages": 259,
+    "extracted_lines": []
+  }
+}

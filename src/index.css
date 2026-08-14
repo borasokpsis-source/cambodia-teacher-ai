@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Outfit', system-ui, sans-serif;
+    background-color: #090d16;
+    color: #f1f5f9;
+  }
+}
+
+.font-khmer {
+  font-family: 'Kantumruy Pro', 'Noto Sans Khmer', sans-serif;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Print Optimization for MoEYS Submission */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Kantumruy Pro', 'Khmer OS Battambang', serif !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  .printable-plan {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .printable-plan *, .printable-plan div, .printable-plan p, .printable-plan span, .printable-plan strong, .printable-plan td, .printable-plan th {
+    color: #000000 !important;
+    background: transparent !important;
+  }
+
+  .printable-plan table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  .printable-plan th, .printable-plan td {
+    border: 1px solid #000000 !important;
+    padding: 8px !important;
+  }
+}
