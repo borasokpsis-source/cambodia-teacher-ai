@@ -195,7 +195,7 @@ export default function CurriculumSelector({
               </div>
             </div>
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> ផ្ទៀងផ្ទាត់រួច (Verified)
+              <CheckCircle2 className="w-3 h-3" /> បញ្ជីចំណងជើងបានផ្ទៀងផ្ទាត់
             </span>
           </div>
 

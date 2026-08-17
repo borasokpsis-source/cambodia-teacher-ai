@@ -1,5 +1,120 @@
 // Export Utilities: Telegram Share, MS Word (.doc), and Printing for Cambodian Teachers
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function withBreaks(value = '') {
+  return escapeHtml(value).replaceAll('\n', '<br/>');
+}
+
+function downloadWordHtml(htmlContent, filename) {
+  const blob = new Blob(['\ufeff', htmlContent], {
+    type: 'application/msword;charset=utf-8',
+  });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function buildHappyChandaraWordHtml(lessonPlan) {
+  const {
+    metadata,
+    objectives,
+    teachingAids = [],
+    fiveStepsProcess = [],
+    blackboardSummary,
+    fullWorksheet,
+    teacherTemplate,
+    curriculumAnchor,
+    enrichmentSources = [],
+    publication,
+  } = lessonPlan;
+  const isFiveE = teacherTemplate?.processTableMode === 'five-e-activity-time';
+  const materials = [...new Set([
+    ...teachingAids,
+    'សន្លឹកកិច្ចការសិស្ស',
+    ...(teacherTemplate?.slideDeck?.enabled ? ['Projector និងស្លាយជំនួយបង្រៀន'] : []),
+  ])];
+  const worksheet = teacherTemplate?.worksheet || {};
+
+  const processRows = fiveStepsProcess.map((step) => {
+    if (isFiveE) {
+      return `<tr>
+        <td>${escapeHtml(step.stepNameKm)}</td>
+        <td><strong>សកម្មភាពគ្រូ៖</strong><br/>${withBreaks(step.teacherActivity)}<br/><br/><strong>សកម្មភាពសិស្ស៖</strong><br/>${withBreaks(step.studentActivity)}<br/><br/><strong>ការវាយតម្លៃ៖</strong> ${escapeHtml(step.evaluation)}</td>
+        <td class="center">${escapeHtml(step.timeMins)}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${withBreaks(step.teacherActivity)}</td>
+      <td><strong>${escapeHtml(step.traditionalStepNameKm)}</strong><br/>${withBreaks(step.lessonContent)}<br/><small>${escapeHtml(step.timeMins)} នាទី</small></td>
+      <td>${withBreaks(step.studentActivity)}</td>
+    </tr>`;
+  }).join('');
+
+  const worksheetQuestions = (fullWorksheet?.sections || []).map((section) => `
+    <h4>${escapeHtml(section.sectionTitle)}</h4>
+    ${(section.questions || []).map((question) => `
+      <div class="question">
+        <p><strong>សំណួរទី ${escapeHtml(question.id)}៖</strong> ${escapeHtml(question.question)}</p>
+        ${question.options ? `<p class="indent">${question.options.map(escapeHtml).join('<br/>')}</p>` : ''}
+        <div class="answer"><strong>កូនសោចម្លើយគ្រូ៖</strong> ${escapeHtml(question.correctAnswer)}${question.explanation ? `<br/><small>${escapeHtml(question.explanation)}</small>` : ''}</div>
+      </div>`).join('')}
+  `).join('');
+
+  const slidesHtml = teacherTemplate?.slideDeck?.enabled
+    ? `<div class="page-break"></div><h2>គម្រោងស្លាយជំនួយបង្រៀន (ជាជម្រើស)</h2>${teacherTemplate.slideDeck.slides.map((slide) => `
+      <div class="box"><strong>Slide ${slide.slideNumber}: ${escapeHtml(slide.title)}</strong><ul>${slide.content.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul><small>${escapeHtml(slide.visualBriefKm)}</small></div>
+    `).join('')}`
+    : '';
+
+  const sourcesHtml = enrichmentSources.length
+    ? `<ul>${enrichmentSources.map((source) => `<li><a href="${escapeHtml(source.url)}">${escapeHtml(source.title)}</a> — ${escapeHtml(source.organization)} (${escapeHtml(source.license)})</li>`).join('')}</ul>`
+    : '<p>មិនទាន់មានប្រភពបន្ថែម។</p>';
+
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8"/><title>${escapeHtml(metadata.topic)}</title><style>
+    @page { size: A4 portrait; margin: 1.35cm; }
+    body { font-family: 'Khmer OS Battambang','Kantumruy Pro',Arial,sans-serif; font-size: 12pt; line-height: 1.45; color:#111; }
+    h1,h2 { text-align:center; margin:4px 0 10px; } h3 { margin:12px 0 6px; }
+    table { width:100%; border-collapse:collapse; margin:6px 0 12px; } th,td { border:1px solid #333; padding:6px; vertical-align:top; }
+    th { background:#eee; } .center{text-align:center;} .box{border:1px solid #aaa;padding:9px;margin:8px 0;} .indent{margin-left:18px;}
+    .answer{background:#edf7ef;border:1px solid #b8d8bf;padding:7px;margin:6px 0 12px;} .page-break{page-break-before:always;} .signature{width:100%;margin-top:18px;text-align:center;}
+  </style></head><body>
+    <div class="center"><strong>${escapeHtml(metadata.schoolName)}</strong><h1>កិច្ចតែងការបង្រៀន</h1></div>
+    <h3>១-ព័ត៌មានទូទៅ</h3>
+    <table>
+      <tr><th>ជំពូក</th><td>${escapeHtml(curriculumAnchor?.chapter || 'ប្រធានបទកំណត់ដោយគ្រូ')}</td><th>មេរៀន</th><td>${escapeHtml(curriculumAnchor?.lesson)}</td></tr>
+      <tr><th>ប្រធានបទ</th><td>${escapeHtml(metadata.topic)}</td><th>ថ្នាក់</th><td>${escapeHtml(metadata.grade)}</td></tr>
+      <tr><th>មុខវិជ្ជា</th><td>${escapeHtml(metadata.subjectKm)}</td><th>រយៈពេល</th><td>${escapeHtml(metadata.duration)}</td></tr>
+      <tr><th>គ្រូបង្រៀន</th><td>${escapeHtml(metadata.teacherName)}</td><th>កាលបរិច្ឆេទ</th><td>${escapeHtml(metadata.date)}</td></tr>
+    </table>
+    <h3>២-វត្ថុបំណង</h3>
+    <table><tr><th>វិជ្ជាសម្បទា</th><td>${escapeHtml(objectives.knowledge)}</td></tr><tr><th>បំណិនសម្បទា</th><td>${escapeHtml(objectives.skills)}</td></tr><tr><th>ចរិយាសម្បទា</th><td>${escapeHtml(objectives.attitude)}</td></tr></table>
+    <h3>៣-សម្ភារឧបទេស</h3><p>${materials.map(escapeHtml).join(' · ')}</p>
+    <h3>៤-ខ្លឹមសារមេរៀន</h3><div class="box">${withBreaks(blackboardSummary)}</div>
+    <h3>៥-ដំណើរការបង្រៀន និងរៀន (${escapeHtml(metadata.teachingMethodKm)})</h3>
+    <table><thead><tr>${isFiveE ? '<th width="18%">5Es</th><th>សកម្មភាព</th><th width="12%">ចំនួននាទី</th>' : '<th>សកម្មភាពគ្រូ</th><th>ខ្លឹមសារមេរៀន</th><th>សកម្មភាពសិស្ស</th>'}</tr></thead><tbody>${processRows}</tbody></table>
+    <table class="signature"><tr><td style="border:0">${escapeHtml(metadata.date)}<br/><strong>គ្រូបង្រៀន</strong><br/>${escapeHtml(metadata.teacherName)}</td><td style="border:0">បានពិនិត្យខ្លឹមសារ និងពេលវេលា<br/><strong>ហត្ថលេខា</strong><br/>................................</td></tr></table>
+    <div class="page-break"></div><h2>${escapeHtml(fullWorksheet?.title || 'សន្លឹកកិច្ចការសិស្ស')}</h2>
+    <div class="box"><strong>វត្ថុបំណង៖</strong> ${escapeHtml(worksheet.objective)}<br/><strong>ទិដ្ឋភាពទូទៅ៖</strong> ${escapeHtml(worksheet.backgroundKnowledge)}<br/><strong>សំណួរស្រាវជ្រាវ៖</strong> ${escapeHtml(worksheet.inquiryQuestion)}<br/><br/>${escapeHtml(worksheet.hypothesisPrompt)}</div>
+    ${worksheet.materials?.length ? `<h3>សម្ភារៈ</h3><ul>${worksheet.materials.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
+    ${worksheet.procedure?.length ? `<h3>ដំណើរការសកម្មភាព/ពិសោធ</h3><ol>${worksheet.procedure.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ol>` : ''}
+    <table><tr><th>លទ្ធផល</th><th>សន្និដ្ឋាន</th></tr><tr><td>${escapeHtml(worksheet.resultsPrompt)}<br/><br/><br/></td><td>${escapeHtml(worksheet.conclusionPrompt)}<br/><br/><br/></td></tr></table>
+    ${worksheetQuestions}${slidesHtml}
+    <h3>ព្រំដែនកម្មវិធីសិក្សា ប្រភព និងសិទ្ធិប្រើប្រាស់</h3><p>${escapeHtml(curriculumAnchor?.scopeNoteKm)}</p><p>${escapeHtml(publication?.status || 'draft')} · ${escapeHtml(publication?.license || 'CC BY 4.0')}</p>${sourcesHtml}
+  </body></html>`;
+}
+
 export function shareToTelegram(lessonPlan) {
   if (!lessonPlan) return;
   const { metadata, objectives } = lessonPlan;
@@ -32,11 +147,18 @@ export function exportToWord(lessonPlan) {
     fiveStepsProcess,
     blackboardSummary,
     handsOnActivity,
-    misconceptionsAlert,
-    differentiatedInstruction,
-    assessmentRubric,
     fullWorksheet,
+    curriculumAnchor,
+    enrichmentSources = [],
+    publication,
   } = lessonPlan;
+
+  if (metadata.templateProfile === 'happy-chandara-v1') {
+    const htmlContent = buildHappyChandaraWordHtml(lessonPlan);
+    const filename = `HappyChandara_LessonPlan_${metadata.subjectKm}_${metadata.topic.replace(/\s+/g, '_')}.doc`;
+    downloadWordHtml(htmlContent, filename);
+    return;
+  }
 
   const processRowsHtml = fiveStepsProcess
     .map(
@@ -75,6 +197,15 @@ export function exportToWord(lessonPlan) {
         .join('')
     : '';
 
+  const sourcesHtml = enrichmentSources.length
+    ? `<ul>${enrichmentSources
+        .map(
+          (source) =>
+            `<li><a href="${source.url}">${source.title}</a> - ${source.organization || ''} (${source.license})</li>`
+        )
+        .join('')}</ul>`
+    : '<p>មិនទាន់មានប្រភពបន្ថែមដែលអាចតាមដានបាន។</p>';
+
   const htmlContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
@@ -105,6 +236,14 @@ export function exportToWord(lessonPlan) {
         <tr><td colspan="2"><strong>បំណិនវិទ្យាសាស្ត្រ (Process Skills)៖</strong> ${metadata.processSkillsKm}</td></tr>
         <tr><td colspan="2" style="font-size:16px; color:#0f4c81;"><strong>ប្រធានបទមេរៀន៖</strong> ${metadata.topic}</td></tr>
       </table>
+
+      <h3>ព្រំដែនកម្មវិធីសិក្សា និងប្រភពបន្ថែម</h3>
+      <div class="box">
+        <p><strong>សៀវភៅ/កម្មវិធីសិក្សា៖</strong> ${curriculumAnchor?.officialBookTitle || 'ប្រធានបទកំណត់ដោយគ្រូ'}</p>
+        <p><strong>ជំពូក៖</strong> ${curriculumAnchor?.chapter || 'ត្រូវផ្ទៀងផ្ទាត់'}</p>
+        <p><strong>ស្ថានភាពផ្សព្វផ្សាយ៖</strong> ${publication?.status || 'draft'} · ${publication?.license || 'CC BY 4.0'}</p>
+        ${sourcesHtml}
+      </div>
 
       <h3>I. វត្ថុបំណង (Objectives)</h3>
       <div class="box">

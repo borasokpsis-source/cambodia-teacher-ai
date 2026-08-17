@@ -1,9 +1,33 @@
 // Ultra-Detailed Scripted AI Lesson Plan Generator for Cambodian MoEYS Teachers
 import { SCIENCE_PROCESS_SKILLS, TEACHING_METHODS } from '../data/moeysCurriculum';
+import {
+  finalizeLessonPlan,
+  formatContextForPrompt,
+  resolveCurriculumAnchor,
+  selectEnrichmentSources,
+} from './curriculumContext';
+import { generateOpenAILessonContent } from './openAILessonGenerator';
+import { generateAnthropicLessonContent } from './anthropicLessonGenerator';
+
+function getPhaseTimes(durationMins) {
+  const presets = {
+    45: [5, 15, 10, 10, 5],
+    50: [5, 15, 15, 10, 5],
+    60: [5, 20, 15, 15, 5],
+    90: [10, 25, 20, 25, 10],
+    120: [10, 35, 30, 30, 15],
+  };
+  if (presets[durationMins]) return presets[durationMins];
+
+  const ratios = [0.1, 0.3, 0.25, 0.25];
+  const firstFour = ratios.map((ratio) => Math.max(1, Math.round(durationMins * ratio)));
+  const finalPhase = Math.max(1, durationMins - firstFour.reduce((sum, value) => sum + value, 0));
+  return [...firstFour, finalPhase];
+}
 
 export async function generateMoEYSLessonPlan({
-  schoolName = 'សាលារៀន ហ៊ុន សែន',
-  teacherName = 'គ្រូបង្រៀន អ៊ុក សុផល',
+  schoolName = 'សាលាហេបភីច័ន្ទតារានារីព្រែកថ្មី',
+  teacherName = 'សុខ បូរ៉ា',
   gradeLevel = 10,
   subjectId = 'biology',
   subjectNameKm = 'ជីវវិទ្យា',
@@ -13,6 +37,10 @@ export async function generateMoEYSLessonPlan({
   resourceLevel = 'medium',
   teachingMethod = '5e_model',
   selectedSkills = ['observing', 'experimenting', 'interpreting'],
+  enrichmentSources = [],
+  allowOpenEnrichment = true,
+  includeSlides = true,
+  aiProvider = 'anthropic',
   apiKey = '',
 }) {
   // Check if API key is provided directly, stored in localStorage, or configured in environment
@@ -28,9 +56,26 @@ export async function generateMoEYSLessonPlan({
   const methodObj = TEACHING_METHODS.find((m) => m.id === teachingMethod) || TEACHING_METHODS[1];
   const processSkillsList = SCIENCE_PROCESS_SKILLS.filter((s) => selectedSkills.includes(s.id));
   const processSkillsKm = processSkillsList.map((s) => s.nameKm).join(', ') || 'ការសង្កេត, ការពិសោធន៍/អនុវត្តផ្ទាល់, ការបកស្រាយទិន្នន័យ';
+  const phaseTimes = getPhaseTimes(durationMins);
+  const curriculumAnchor = resolveCurriculumAnchor({
+    gradeLevel,
+    subjectId,
+    subjectNameKm,
+    subjectNameEn,
+    topic,
+  });
+  const selectedEnrichmentSources = selectEnrichmentSources({
+    subjectId,
+    selectedSources: enrichmentSources,
+    allowOpenEnrichment,
+  });
+  const curriculumAndSourceContext = formatContextForPrompt(
+    curriculumAnchor,
+    selectedEnrichmentSources
+  );
 
   // -------------------------------------------------------------
-  // REAL GEMINI API CALL (If API Key exists)
+  // REMOTE AI PROVIDERS (OpenAI/Anthropic server proxies or Gemini browser key)
   // -------------------------------------------------------------
   // Helper to parse JSON cleanly even if wrapped in markdown codeblocks
   const cleanAndParseJSON = (rawText) => {
@@ -52,10 +97,170 @@ export async function generateMoEYSLessonPlan({
   // -------------------------------------------------------------
   let lastApiError = null;
 
-  if (activeKey && activeKey.trim().length > 10) {
+  if (aiProvider === 'openai') {
+    try {
+      const openAIResult = await generateOpenAILessonContent({
+        schoolName,
+        teacherName,
+        gradeLevel,
+        subjectNameKm,
+        subjectNameEn,
+        topic,
+        durationMins,
+        resourceLevel,
+        methodNameKm: methodObj.nameKm,
+        methodNameEn: methodObj.nameEn,
+        processSkillsKm,
+        phaseTimes,
+        curriculumAndSourceContext,
+      });
+      const responseJson = cleanAndParseJSON(openAIResult.rawText);
+
+      if (
+        !responseJson?.objectives ||
+        !Array.isArray(responseJson?.fiveStepsProcess) ||
+        !Array.isArray(responseJson?.fullWorksheet?.sections)
+      ) {
+        throw new Error('OpenAI returned an incomplete lesson-plan structure.');
+      }
+
+      return finalizeLessonPlan({
+        metadata: {
+          id: 'LP-OPENAI-' + Date.now().toString().slice(-6),
+          generatedAt: new Date().toISOString(),
+          schoolName,
+          teacherName,
+          grade: `ថ្នាក់ទី ${gradeLevel}`,
+          subjectKm: subjectNameKm,
+          subjectEn: subjectNameEn,
+          topic,
+          duration: `${durationMins} នាទី (Minutes)`,
+          durationMins,
+          date: dateStr,
+          resourceLevel,
+          teachingMethodKm: methodObj.nameKm,
+          teachingMethodEn: methodObj.nameEn,
+          teachingMethodId: teachingMethod,
+          processSkillsKm,
+          includeSlides,
+          isRealAiGenerated: true,
+          aiProvider: 'openai',
+          aiProviderRequested: aiProvider,
+          aiModelUsed: openAIResult.model,
+          apiRequestId: openAIResult.responseId,
+          apiUsage: openAIResult.usage,
+          contentProfile: 'topic-specific',
+        },
+        objectives: responseJson.objectives,
+        blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${topic}`,
+        misconceptionsAlert: responseJson.misconceptionsAlert,
+        differentiatedInstruction: responseJson.differentiatedInstruction,
+        assessmentRubric: responseJson.assessmentRubric,
+        handsOnActivity: responseJson.handsOnActivity,
+        teachingAids: responseJson.teachingAids || [
+          `សៀវភៅពុម្ពក្រសួងអប់រំ យុវជន និងកីឡា (${subjectNameKm} ថ្នាក់ទី ${gradeLevel})`,
+          'រូបភាពតំណាង និងសម្ភារអនុវត្តដែលសមស្របនឹងមេរៀន',
+          'សន្លឹកកិច្ចការសិស្ស និងក្រដាសផ្ទាំងធំ',
+        ],
+        fiveStepsProcess: responseJson.fiveStepsProcess,
+        fullWorksheet: responseJson.fullWorksheet,
+      }, {
+        anchor: curriculumAnchor,
+        sources: selectedEnrichmentSources,
+        sourceUsage: 'prompt-reference',
+      });
+    } catch (error) {
+      console.error('OpenAI API call failed, switching to local draft engine:', error);
+      lastApiError = `OpenAI: ${error.message || 'API request failed'}`;
+    }
+  }
+
+  if (aiProvider === 'anthropic') {
+    try {
+      const anthropicResult = await generateAnthropicLessonContent({
+        schoolName,
+        teacherName,
+        gradeLevel,
+        subjectNameKm,
+        subjectNameEn,
+        topic,
+        durationMins,
+        resourceLevel,
+        methodNameKm: methodObj.nameKm,
+        methodNameEn: methodObj.nameEn,
+        processSkillsKm,
+        phaseTimes,
+        curriculumAndSourceContext,
+      });
+      const responseJson = cleanAndParseJSON(anthropicResult.rawText);
+
+      if (
+        !responseJson?.objectives ||
+        !Array.isArray(responseJson?.fiveStepsProcess) ||
+        !Array.isArray(responseJson?.fullWorksheet?.sections)
+      ) {
+        throw new Error('Claude returned an incomplete lesson-plan structure.');
+      }
+
+      return finalizeLessonPlan(
+        {
+          metadata: {
+            id: 'LP-CLAUDE-' + Date.now().toString().slice(-6),
+            generatedAt: new Date().toISOString(),
+            schoolName,
+            teacherName,
+            grade: `ថ្នាក់ទី ${gradeLevel}`,
+            subjectKm: subjectNameKm,
+            subjectEn: subjectNameEn,
+            topic,
+            duration: `${durationMins} នាទី (Minutes)`,
+            durationMins,
+            date: dateStr,
+            resourceLevel,
+            teachingMethodKm: methodObj.nameKm,
+            teachingMethodEn: methodObj.nameEn,
+            teachingMethodId: teachingMethod,
+            processSkillsKm,
+            includeSlides,
+            isRealAiGenerated: true,
+            aiProvider: 'anthropic',
+            aiProviderRequested: aiProvider,
+            aiModelUsed: anthropicResult.model,
+            apiRequestId: anthropicResult.responseId,
+            apiUsage: anthropicResult.usage,
+            apiStopReason: anthropicResult.stopReason,
+            contentProfile: 'topic-specific',
+          },
+          objectives: responseJson.objectives,
+          blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${topic}`,
+          misconceptionsAlert: responseJson.misconceptionsAlert,
+          differentiatedInstruction: responseJson.differentiatedInstruction,
+          assessmentRubric: responseJson.assessmentRubric,
+          handsOnActivity: responseJson.handsOnActivity,
+          teachingAids: responseJson.teachingAids || [
+            `សៀវភៅពុម្ពក្រសួងអប់រំ យុវជន និងកីឡា (${subjectNameKm} ថ្នាក់ទី ${gradeLevel})`,
+            'រូបភាពតំណាង និងសម្ភារអនុវត្តដែលសមស្របនឹងមេរៀន',
+            'សន្លឹកកិច្ចការសិស្ស និងក្រដាសផ្ទាំងធំ',
+          ],
+          fiveStepsProcess: responseJson.fiveStepsProcess,
+          fullWorksheet: responseJson.fullWorksheet,
+        },
+        {
+          anchor: curriculumAnchor,
+          sources: selectedEnrichmentSources,
+          sourceUsage: 'prompt-reference',
+        },
+      );
+    } catch (error) {
+      console.error('Anthropic API call failed, switching to local draft engine:', error);
+      lastApiError = `Anthropic: ${error.message || 'API request failed'}`;
+    }
+  }
+
+  if (aiProvider === 'gemini' && activeKey && activeKey.trim().length > 10) {
     try {
       const prompt = `
-You are an expert master teacher and curriculum writer for the Ministry of Education, Youth and Sport (MoEYS) in Cambodia.
+You are an independent expert teacher and curriculum writer creating classroom materials aligned with Cambodia's Ministry of Education, Youth and Sport (MoEYS) curriculum.
 Generate an ultra-detailed, scripted, 100% Khmer Unicode lesson plan in JSON format for a real Cambodian classroom.
 
 Lesson Context:
@@ -68,11 +273,14 @@ Lesson Context:
 - Teaching Framework: ${methodObj.nameKm} (${methodObj.nameEn})
 - Target Science Process Skills: ${processSkillsKm}
 
+${curriculumAndSourceContext}
+
 CRITICAL INSTRUCTIONS FOR TOPIC ACCURACY & QUALITY:
 1. The target lesson topic is EXACTLY: "${topic}".
-2. Every single section of the lesson plan (Objectives, Blackboard Notes, Misconceptions Alert, Differentiated Instruction, Assessment Rubric, Hands-On Activity/Experiment, Teaching Aids, 5E Teacher Dialogue & Student Responses, and complete 5-question Worksheet with Answer Key) MUST BE 100% ACCURATE AND SPECIFIC TO THE TOPIC "${topic}".
+2. Every section of the lesson plan (Objectives, Blackboard Notes, Misconceptions Alert, Differentiated Instruction, Assessment Rubric, Hands-On Activity/Experiment, Teaching Aids, Teacher Dialogue, Student Responses, and complete 5-question Worksheet with Answer Key) MUST stay specific to the topic "${topic}" and within the stated curriculum boundary.
 3. DO NOT output content for any unrelated topic. For example, if the topic is "${topic}", do NOT write about Photosynthesis or Levers unless the topic itself explicitly asks for Photosynthesis or Levers.
 4. Provide realistic Khmer teacher dialogue scripts ("🗣️ **ពាក្យសម្តីគ្រូនិយាយផ្ទាល់៖**..."), expected student responses ("🙋‍♂️ **ចម្លើយសិស្សរំពឹងទុក៖**..."), and curriculum-aligned Khmer terminology.
+5. The five teaching phase times MUST add up to exactly ${durationMins} minutes. Use this allocation: ${phaseTimes.join(' + ')} minutes.
 
 Return ONLY valid JSON matching this exact structure:
 {
@@ -114,7 +322,7 @@ Return ONLY valid JSON matching this exact structure:
     {
       "stepIndex": 1,
       "stepNameKm": "១. ចូលរួម (ENGAGE)",
-      "timeMins": 5,
+      "timeMins": ${phaseTimes[0]},
       "teacherActivity": "🗣️ **ពាក្យសម្តីគ្រូនិយាយផ្ទាល់៖**\\n...",
       "studentActivity": "🙋‍♂️ **ចម្លើយសិស្សរំពឹងទុក៖**\\n...",
       "evaluation": "..."
@@ -122,7 +330,7 @@ Return ONLY valid JSON matching this exact structure:
     {
       "stepIndex": 2,
       "stepNameKm": "២. ស្វែងយល់ (EXPLORE)",
-      "timeMins": 15,
+      "timeMins": ${phaseTimes[1]},
       "teacherActivity": "...",
       "studentActivity": "...",
       "evaluation": "..."
@@ -130,7 +338,7 @@ Return ONLY valid JSON matching this exact structure:
     {
       "stepIndex": 3,
       "stepNameKm": "៣. ពន្យល់ (EXPLAIN)",
-      "timeMins": 10,
+      "timeMins": ${phaseTimes[2]},
       "teacherActivity": "...",
       "studentActivity": "...",
       "evaluation": "..."
@@ -138,7 +346,7 @@ Return ONLY valid JSON matching this exact structure:
     {
       "stepIndex": 4,
       "stepNameKm": "៤. ពង្រីក (ELABORATE)",
-      "timeMins": 10,
+      "timeMins": ${phaseTimes[3]},
       "teacherActivity": "...",
       "studentActivity": "...",
       "evaluation": "..."
@@ -146,7 +354,7 @@ Return ONLY valid JSON matching this exact structure:
     {
       "stepIndex": 5,
       "stepNameKm": "៥. វាយតម្លៃ (EVALUATION)",
-      "timeMins": 5,
+      "timeMins": ${phaseTimes[4]},
       "teacherActivity": "...",
       "studentActivity": "...",
       "evaluation": "..."
@@ -224,7 +432,7 @@ Return ONLY valid JSON matching this exact structure:
       }
 
       if (responseJson && responseJson.objectives && responseJson.fiveStepsProcess) {
-        return {
+        return finalizeLessonPlan({
           metadata: {
             id: 'LP-AI-' + Date.now().toString().slice(-6),
             generatedAt: new Date().toISOString(),
@@ -235,12 +443,17 @@ Return ONLY valid JSON matching this exact structure:
             subjectEn: subjectNameEn,
             topic,
             duration: `${durationMins} នាទី (Minutes)`,
+            durationMins,
             date: dateStr,
             resourceLevel,
             teachingMethodKm: methodObj.nameKm,
             teachingMethodEn: methodObj.nameEn,
+            teachingMethodId: teachingMethod,
             processSkillsKm,
+            includeSlides,
             isRealAiGenerated: true,
+            aiProvider: 'gemini',
+            aiProviderRequested: aiProvider,
             aiModelUsed: usedModel,
           },
           objectives: responseJson.objectives,
@@ -256,7 +469,11 @@ Return ONLY valid JSON matching this exact structure:
           ],
           fiveStepsProcess: responseJson.fiveStepsProcess,
           fullWorksheet: responseJson.fullWorksheet,
-        };
+        }, {
+          anchor: curriculumAnchor,
+          sources: selectedEnrichmentSources,
+          sourceUsage: 'prompt-reference',
+        });
       }
     } catch (err) {
       console.error('Gemini API call failed, switching to local dynamic generator:', err);
@@ -271,9 +488,11 @@ Return ONLY valid JSON matching this exact structure:
 
   const topicLower = topic.toLowerCase();
   const isProtist = topicLower.includes('ប្រូទីស') || topicLower.includes('protist');
-  const isBacteriaVirus = topicLower.includes('បាក់តេរី') || topicLower.includes('វីរុស') || topicLower.includes('bacteria');
   const isPhotosynthesis = topicLower.includes('រស្មីសំយោគ') || topicLower.includes('photosynthesis');
-  const isSimpleMachines = topicLower.includes('ម៉ាស៊ីនងាយ') || topicLower.includes('ឃ្នាស់') || topicLower.includes('lever');
+  const isSpeedVelocity =
+    topicLower.includes('វ៉ិចទ័រល្បឿន') ||
+    topicLower.includes('velocity') ||
+    topicLower.includes('speed and velocity');
 
   let blackboardSummary = '';
   let misconceptionsAlert = null;
@@ -454,6 +673,106 @@ Return ONLY valid JSON matching this exact structure:
       instructions: 'ឈ្មោះសិស្ស៖ .....................',
       sections: [{ sectionTitle: 'ផ្នែកទី ១', questions: [{ id: 1, question: 'តើរស្មីសំយោគបង្កើតអ្វីខ្លះ?', options: ['ក. គ្លុយកូស និង O2', 'ខ. CO2'], correctAnswer: 'ក. គ្លុយកូស និង O2' }] }],
     };
+  } else if (isSpeedVelocity) {
+    objectives = {
+      knowledge: 'សិស្សអាចបែងចែកល្បឿន (បរិមាណស្កាលែ) និងវ៉ិចទ័រល្បឿន (បរិមាណវ៉ិចទ័រ) ព្រមទាំងប្រើរូបមន្ត v = d/t បានត្រឹមត្រូវ។',
+      skills: `សិស្សអាចវាស់ចម្ងាយ និងពេលវេលា គណនាល្បឿនមធ្យម បង្ហាញទិសដៅដោយព្រួញ និងបកស្រាយទិន្នន័យដោយប្រើបំណិន ${processSkillsKm}។`,
+      attitude: 'សិស្សធ្វើការជាក្រុមដោយសុវត្ថិភាព កត់ត្រាទិន្នន័យស្មោះត្រង់ និងយល់ពីសារៈសំខាន់នៃល្បឿនសុវត្ថិភាពលើដងផ្លូវ។',
+    };
+
+    blackboardSummary = `មេរៀន៖ ល្បឿន និងវ៉ិចទ័រល្បឿន
+១. ល្បឿន (speed) ជាបរិមាណស្កាលែ៖ ល្បឿនមធ្យម = ចម្ងាយសរុប ÷ ពេលវេលាសរុប; v = d/t។
+២. វ៉ិចទ័រល្បឿន (velocity) ជាបរិមាណវ៉ិចទ័រ៖ ត្រូវមានទំហំ និងទិសដៅ; វ៉ិចទ័រល្បឿនមធ្យម = បម្លាស់ទី ÷ ពេលវេលា។
+៣. ឯកតា SI គឺ m/s; 1 m/s = 3.6 km/h។
+៤. ចម្ងាយជាប្រវែងផ្លូវដែលបានធ្វើដំណើរ; បម្លាស់ទីជាបន្ទាត់ត្រង់ពីទីតាំងដើមទៅទីតាំងចុងក្រោយ និងមានទិសដៅ។
+ឧទាហរណ៍៖ កង់ធ្វើដំណើរ 100 m ក្នុង 20 s មានល្បឿនមធ្យម 5 m/s។ បើត្រឡប់មកទីតាំងដើម បម្លាស់ទីស្មើ 0 ដូច្នេះវ៉ិចទ័រល្បឿនមធ្យមស្មើ 0 ទោះចម្ងាយមិនស្មើ 0 ក៏ដោយ។`;
+
+    misconceptionsAlert = {
+      title: '⚠️ ការយល់ច្រឡំ៖ ល្បឿន និងវ៉ិចទ័រល្បឿនមិនដូចគ្នាទេ',
+      commonMisconception: 'សិស្សអាចគិតថា ល្បឿន និងវ៉ិចទ័រល្បឿនជាបរិមាណតែមួយ ឬច្រឡំចម្ងាយជាមួយបម្លាស់ទី។',
+      diagnosticQuestion: '❓ សិស្សដើរ 10 m ទៅកើត រួចត្រឡប់ 10 m មកទីតាំងដើម។ តើចម្ងាយ និងបម្លាស់ទីស្មើប៉ុន្មាន?',
+      teacherIntervention: '💡 គូសផ្លូវចេញ-ត្រឡប់លើក្តារ៖ ចម្ងាយសរុប = 20 m ប៉ុន្តែបម្លាស់ទី = 0 m។ ដូច្នេះល្បឿនមធ្យមមិនសូន្យ តែវ៉ិចទ័រល្បឿនមធ្យមសូន្យ។',
+    };
+
+    handsOnActivity = {
+      title: 'សកម្មភាពវាស់ល្បឿនរថយន្តក្មេងលេង ឬដបរមៀល',
+      materialsNeeded: ['រថយន្តក្មេងលេង ឬដបមានគម្រប', 'ម៉ែត្រវាស់ ឬខ្សែមានសញ្ញាចម្ងាយ', 'នាឡិកាកំណត់ពេល', 'កាសែតបិទសម្គាល់ទិស និងសន្លឹកតារាងទិន្នន័យ'],
+      steps: [
+        '១. សម្គាល់ផ្លូវត្រង់ប្រវែង 2 m និងគូសព្រួញបង្ហាញទិសទៅកើត។',
+        '២. បញ្ចេញរថយន្តឱ្យធ្វើដំណើរ 2 m; វាស់ពេល 3 ដង និងកត់ត្រាជាវិនាទី។',
+        '៣. គណនាពេលមធ្យម និងល្បឿនមធ្យម v = 2 m ÷ ពេលមធ្យម។',
+        '៤. ឱ្យរថយន្តត្រឡប់មកទីតាំងដើម ហើយប្រៀបធៀបចម្ងាយសរុបជាមួយបម្លាស់ទី។',
+      ],
+      thinkingPrompts: [
+        '• បើចម្ងាយដូចគ្នា តែពេលវេលាតិចជាង តើល្បឿនប្រែប្រួលដូចម្តេច?',
+        '• ហេតុអ្វីការប្រាប់ថា “5 m/s” មិនទាន់គ្រប់គ្រាន់សម្រាប់វ៉ិចទ័រល្បឿន?',
+      ],
+    };
+
+    processMatrix = [
+      {
+        stepIndex: 1,
+        stepNameKm: '១. ចូលរួម (ENGAGE)',
+        timeMins: 5,
+        teacherActivity: '🗣️ “ម៉ូតូពីរគ្រឿងធ្វើដំណើរផ្ទុយទិសគ្នាក្នុងល្បឿន 30 km/h ដូចគ្នា។ តើចលនារបស់វាដូចគ្នាទាំងស្រុងឬទេ?” គ្រូប្រមូលមូលហេតុរបស់សិស្ស មិនទាន់ប្រាប់ចម្លើយ។',
+        studentActivity: '🙋‍♂️ សិស្សទស្សន៍ទាយ និងពន្យល់ថា ទំហំល្បឿនដូចគ្នា ប៉ុន្តែទិសដៅខុសគ្នា។',
+        evaluation: 'សំណួរស្ទង់គំនិតដើមអំពីទំហំ និងទិសដៅ',
+      },
+      {
+        stepIndex: 2,
+        stepNameKm: '២. ស្វែងយល់ (EXPLORE)',
+        timeMins: 15,
+        teacherActivity: '🗣️ “ក្នុងក្រុម សូមវាស់ផ្លូវ 2 m បញ្ចេញវត្ថុរមៀល និងវាស់ពេល 3 ដង។ កុំរុញខ្លាំងជិតមិត្តភក្តិ ហើយកត់ត្រាលទ្ធផលទាំងអស់।”',
+        studentActivity: '🙋‍♂️ សិស្សកំណត់តួនាទី វាស់ចម្ងាយ/ពេល ធ្វើសាកល្បង 3 ដង គណនាពេលមធ្យម និងគូសព្រួញទិសដៅ។',
+        evaluation: 'តារាងទិន្នន័យមានឯកតា និងការវាស់ 3 ដង',
+      },
+      {
+        stepIndex: 3,
+        stepNameKm: '៣. ពន្យល់ (EXPLAIN)',
+        timeMins: 10,
+        teacherActivity: '🗣️ “តើក្រុមគណនា v = d/t យ៉ាងដូចម្តេច? តើអ្វីត្រូវបន្ថែម ដើម្បីបម្លែងល្បឿនទៅជាវ៉ិចទ័រល្បឿន?” គ្រូសំយោគនិយមន័យ និងឯកតា។',
+        studentActivity: '🙋‍♂️ តំណាងក្រុមបង្ហាញការគណនា ហើយសិស្សកែតម្រូវឯកតា និងបន្ថែមទិសដៅទៅវ៉ិចទ័រល្បឿន។',
+        evaluation: 'ពិនិត្យរូបមន្ត ការជំនួសតម្លៃ ឯកតា និងទិសដៅ',
+      },
+      {
+        stepIndex: 4,
+        stepNameKm: '៤. ពង្រីក (ELABORATE)',
+        timeMins: 10,
+        teacherActivity: '🗣️ “បើវត្ថុទៅ 2 m ហើយត្រឡប់ 2 m ក្នុង 8 s តើល្បឿនមធ្យម និងវ៉ិចទ័រល្បឿនមធ្យមខុសគ្នាយ៉ាងដូចម្តេច?”',
+        studentActivity: '🙋‍♂️ សិស្សគណនាចម្ងាយសរុប 4 m ល្បឿនមធ្យម 0.5 m/s បម្លាស់ទី 0 m និងវ៉ិចទ័រល្បឿនមធ្យម 0 m/s។',
+        evaluation: 'Exit pair-check៖ បែងចែកចម្ងាយពីបម្លាស់ទីបានត្រឹមត្រូវ',
+      },
+      {
+        stepIndex: 5,
+        stepNameKm: '៥. វាយតម្លៃ (EVALUATION)',
+        timeMins: 5,
+        teacherActivity: '🗣️ “សូមបំពេញសំណួរ 5 ដោយបង្ហាញរូបមន្ត ឯកតា និងទិសដៅនៅកន្លែងដែលចាំបាច់।”',
+        studentActivity: '🙋‍♂️ សិស្សបំពេញសន្លឹកកិច្ចការម្នាក់ៗ និងសម្គាល់ចំណុចដែលខ្លួនមិនទាន់យល់។',
+        evaluation: 'ពិន្ទុ 5; គ្រូបង្រៀនបន្ថែមបើសិស្សមិនទាន់បាន 3/5',
+      },
+    ];
+
+    fullWorksheet = {
+      title: 'សន្លឹកកិច្ចការ ៥ សំណួរ៖ ល្បឿន និងវ៉ិចទ័រល្បឿន',
+      instructions: 'ឈ្មោះសិស្ស៖ ........................ ថ្នាក់ទី៖ 8 — សូមបង្ហាញរូបមន្ត និងឯកតា។',
+      sections: [
+        {
+          sectionTitle: 'ផ្នែកទី ១៖ គំនិតគ្រឹះ',
+          questions: [
+            { id: 1, question: 'តើមួយណាជាបរិមាណវ៉ិចទ័រ?', options: ['ក. 5 m', 'ខ. 5 s', 'គ. 5 m/s ទៅទិសកើត', 'ឃ. 5 kg'], correctAnswer: 'គ. 5 m/s ទៅទិសកើត', explanation: 'វ៉ិចទ័រត្រូវមានទំហំ និងទិសដៅ។' },
+            { id: 2, question: 'កង់ធ្វើដំណើរ 120 m ក្នុង 30 s។ ចូរគណនាល្បឿនមធ្យម។', correctAnswer: 'v = d/t = 120/30 = 4 m/s', explanation: 'ចែកចម្ងាយសរុបដោយពេលវេលាសរុប។' },
+          ],
+        },
+        {
+          sectionTitle: 'ផ្នែកទី ២៖ អនុវត្ត និងបកស្រាយ',
+          questions: [
+            { id: 3, question: 'បម្លែង 10 m/s ទៅជា km/h។', correctAnswer: '10 × 3.6 = 36 km/h', explanation: '1 m/s = 3.6 km/h។' },
+            { id: 4, question: 'សិស្សដើរ 20 m ទៅកើត រួច 20 m ត្រឡប់មកទីតាំងដើម។ តើចម្ងាយ និងបម្លាស់ទីស្មើប៉ុន្មាន?', correctAnswer: 'ចម្ងាយ = 40 m; បម្លាស់ទី = 0 m', explanation: 'បម្លាស់ទីវាស់ពីទីតាំងដើមទៅទីតាំងចុងក្រោយ។' },
+            { id: 5, question: 'រថយន្ត A និង B ទាំងពីរមាន 15 m/s ប៉ុន្តែ A ទៅជើង និង B ទៅត្បូង។ តើល្បឿន និងវ៉ិចទ័រល្បឿនរបស់វាដូចគ្នាឬទេ?', correctAnswer: 'ល្បឿនដូចគ្នា 15 m/s ប៉ុន្តែវ៉ិចទ័រល្បឿនខុសគ្នា ព្រោះទិសដៅផ្ទុយគ្នា។', explanation: 'ល្បឿនជាស្កាលែ; វ៉ិចទ័រល្បឿនមានទិសដៅ។' },
+          ],
+        },
+      ],
+    };
   } else {
     // Dynamic Fallback for ANY other topic
     objectives = {
@@ -580,7 +899,12 @@ Return ONLY valid JSON matching this exact structure:
     };
   }
 
-  return {
+  processMatrix = processMatrix.map((step, index) => ({
+    ...step,
+    timeMins: phaseTimes[index] ?? step.timeMins,
+  }));
+
+  return finalizeLessonPlan({
     metadata: {
       id: 'LP-LOCAL-' + Date.now().toString().slice(-6),
       generatedAt: new Date().toISOString(),
@@ -591,13 +915,29 @@ Return ONLY valid JSON matching this exact structure:
       subjectEn: subjectNameEn,
       topic,
       duration: `${durationMins} នាទី (Minutes)`,
+      durationMins,
       date: dateStr,
       resourceLevel,
       teachingMethodKm: methodObj.nameKm,
       teachingMethodEn: methodObj.nameEn,
+      teachingMethodId: teachingMethod,
       processSkillsKm,
+      includeSlides,
       isRealAiGenerated: false,
-      apiError: activeKey ? (lastApiError || 'Gemini API failed to respond. Fallback to Local Smart Engine.') : null,
+      aiProvider: 'offline',
+      aiProviderRequested: aiProvider,
+      contentProfile: isProtist || isPhotosynthesis || isSpeedVelocity ? 'topic-specific' : 'generic-draft',
+      apiError:
+        aiProvider === 'offline'
+          ? null
+          : lastApiError ||
+            (aiProvider === 'openai'
+              ? 'OpenAI is unavailable. Fallback to Local Smart Engine.'
+              : aiProvider === 'anthropic'
+                ? 'Anthropic is unavailable. Fallback to Local Smart Engine.'
+                : activeKey
+                  ? 'Gemini API failed to respond. Fallback to Local Smart Engine.'
+                  : null),
     },
     objectives,
     blackboardSummary,
@@ -625,5 +965,9 @@ Return ONLY valid JSON matching this exact structure:
     ],
     fiveStepsProcess: processMatrix,
     fullWorksheet,
-  };
+  }, {
+    anchor: curriculumAnchor,
+    sources: selectedEnrichmentSources,
+    sourceUsage: 'recommended-enrichment',
+  });
 }

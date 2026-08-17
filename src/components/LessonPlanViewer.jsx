@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { shareToTelegram, exportToWord, printLessonPlan } from '../services/exportUtils';
 import { refineLessonPlan } from '../services/aiRefiningService';
+import HappyChandaraLessonDocument from './HappyChandaraLessonDocument';
 import {
   Share2,
   FileText,
@@ -13,22 +14,25 @@ import {
   Brain,
   AlertTriangle,
   Users,
-  BarChart3,
   Send,
-  Gamepad2,
-  HelpCircle,
   BookOpen,
   FileQuestion,
   CheckCircle2,
   FileCheck,
+  Save,
+  UploadCloud,
+  ShieldCheck,
+  ExternalLink,
+  Gauge,
 } from 'lucide-react';
 
-export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
+export default function LessonPlanViewer({ lessonPlan: initialPlan, onSavePlan }) {
   const [currentPlan, setCurrentPlan] = useState(initialPlan);
   const [copied, setCopied] = useState(false);
   const [refinementInput, setRefinementInput] = useState('');
   const [isRefining, setIsRefining] = useState(false);
   const [showAnswerKey, setShowAnswerKey] = useState(true);
+  const [saveNotice, setSaveNotice] = useState('');
 
   if (!currentPlan) return null;
 
@@ -41,11 +45,28 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
     handsOnActivity,
     misconceptionsAlert,
     differentiatedInstruction,
-    assessmentRubric,
-    gameActivity,
-    examPrepSection,
     fullWorksheet,
+    curriculumAnchor,
+    enrichmentSources = [],
+    qualityReport,
+    publication,
   } = currentPlan;
+  const providerName =
+    metadata.aiProvider === 'openai'
+      ? 'OpenAI'
+      : metadata.aiProvider === 'anthropic'
+        ? 'Claude'
+      : metadata.aiProvider === 'gemini'
+        ? 'Gemini'
+        : 'Local Smart Engine';
+  const requestedProviderName =
+    metadata.aiProviderRequested === 'openai'
+      ? 'OpenAI API'
+      : metadata.aiProviderRequested === 'anthropic'
+        ? 'Claude API'
+      : metadata.aiProviderRequested === 'gemini'
+        ? 'Gemini API'
+        : 'AI provider';
 
   const handleCopy = () => {
     const text = `កិច្ចតែងការបង្រៀន (${metadata.teachingMethodKm})៖ ${metadata.topic} (${metadata.subjectKm} ${metadata.grade})\nសាលារៀន៖ ${metadata.schoolName}\nគ្រូបង្រៀន៖ ${metadata.teacherName}\nបំណិនវិទ្យាសាស្ត្រ៖ ${metadata.processSkillsKm}\n\nវត្ថុបំណង៖\n១. ពុទ្ធិ៖ ${objectives.knowledge}\n២. បំណិន៖ ${objectives.skills}\n៣. ឥរិយាបថ៖ ${objectives.attitude}`;
@@ -68,6 +89,14 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
     }
   };
 
+  const handleSave = (status) => {
+    if (!onSavePlan) return;
+    const savedPlan = onSavePlan(currentPlan, status);
+    setCurrentPlan(savedPlan);
+    setSaveNotice(status === 'published' ? 'បានផ្សព្វផ្សាយក្នុងបណ្ណាល័យ!' : 'បានរក្សាទុកជាសេចក្តីព្រាង!');
+    setTimeout(() => setSaveNotice(''), 2200);
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Action Bar (No Print) */}
@@ -79,7 +108,7 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
           </span>
           {metadata.isRealAiGenerated ? (
             <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold font-sans">
-              🤖 {metadata.aiModelUsed || 'Gemini 2.0 Flash'}
+              🤖 {providerName} · {metadata.aiModelUsed || 'AI model'}
             </span>
           ) : (
             <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold font-khmer">
@@ -89,6 +118,22 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => handleSave('draft')}
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-khmer text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700"
+          >
+            <Save className="w-3.5 h-3.5 text-cyan-400" />
+            <span>រក្សាទុក</span>
+          </button>
+
+          <button
+            onClick={() => handleSave('published')}
+            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-khmer text-xs font-semibold flex items-center gap-1.5 transition-all"
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            <span>ផ្សព្វផ្សាយ CC BY</span>
+          </button>
+
           <button
             onClick={() => shareToTelegram(currentPlan)}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-khmer text-xs font-semibold flex items-center gap-2 transition-all shadow-md shadow-blue-600/20"
@@ -123,16 +168,50 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
         </div>
       </div>
 
-      {/* API Warning Diagnostic Banner (if Gemini API failed or was fallback) */}
+      {saveNotice && (
+        <div className="fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl bg-emerald-500 text-slate-950 text-xs font-bold font-khmer shadow-2xl no-print">
+          {saveNotice}
+        </div>
+      )}
+
+      {/* API Warning Diagnostic Banner (if the selected API failed or used fallback) */}
       {metadata.apiError && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-khmer space-y-1 no-print shadow-md">
           <div className="flex items-center gap-2 font-bold text-amber-300">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>ការជូនដំណឹងពី Gemini API:</span>
+            <span>ការជូនដំណឹងពី {requestedProviderName}:</span>
           </div>
           <p className="text-amber-300/90 leading-relaxed">
-            {metadata.apiError}. KruAI បានដំណើរការ <strong> Local Smart Engine</strong> ជំនួស ដើម្បីបង្កើតកិច្ចតែងការស្របតាមប្រធានបទ 100% ដោយមិនឱ្យរំខានដល់ការបង្រៀន!
+            {metadata.apiError}. KruAI បានដំណើរការ <strong>Local Smart Engine</strong> ជំនួស។ សូមគ្រូពិនិត្យខ្លឹមសារ និងចម្លើយ មុនយកទៅបង្រៀន ឬផ្សព្វផ្សាយ។
           </p>
+        </div>
+      )}
+
+      {qualityReport && (
+        <div className="glass-panel p-5 rounded-2xl border border-slate-800 no-print space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-cyan-400" />
+              <div>
+                <h4 className="text-sm font-bold text-slate-100 font-khmer">ការត្រួតពិនិត្យគុណភាពស្វ័យប្រវត្តិ</h4>
+                <p className="text-[10px] text-slate-500 font-khmer">ជាសញ្ញាជួយពិនិត្យរចនាសម្ព័ន្ធ មិនមែនជាការអនុម័តដោយអ្នកជំនាញទេ។</p>
+              </div>
+            </div>
+            <div className={`px-4 py-2 rounded-xl border text-center ${qualityReport.score >= 85 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+              <span className="text-xl font-black">{qualityReport.score}</span>
+              <span className="text-xs">/100</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {qualityReport.checks.map((check) => (
+              <div key={check.id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-[10px] font-khmer">
+                <p className={`font-bold ${check.status === 'pass' ? 'text-emerald-300' : check.status === 'fail' ? 'text-rose-300' : 'text-amber-300'}`}>
+                  {check.status === 'pass' ? '✓' : check.status === 'fail' ? '✕' : '!'} {check.labelKm}
+                </p>
+                <p className="text-slate-500 mt-1 leading-relaxed">{check.detailKm}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -195,6 +274,13 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
       </div>
 
       {/* Main Printable Document Sheet */}
+      {metadata.templateProfile === 'happy-chandara-v1' ? (
+        <HappyChandaraLessonDocument
+          lessonPlan={currentPlan}
+          showAnswerKey={showAnswerKey}
+          onToggleAnswerKey={() => setShowAnswerKey((current) => !current)}
+        />
+      ) : (
       <div className="printable-plan glass-panel p-6 sm:p-10 rounded-3xl border border-slate-800 bg-slate-900/90 space-y-8 text-slate-100 font-khmer shadow-2xl">
         {/* National Header */}
         <div className="text-center space-y-1 border-b border-slate-800 pb-6">
@@ -204,7 +290,7 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
           <h2 className="text-xl sm:text-2xl font-black text-cyan-400 pt-2">
             កិច្ចតែងការបង្រៀនលម្អិតសម្រាប់បង្រៀនផ្ទាល់ ({metadata.teachingMethodKm})
           </h2>
-          <p className="text-xs text-slate-400">ស្តង់ដារក្រសួងអប់រំ យុវជន និងកីឡា & STEM (មានអត្ថបទនិយាយផ្ទាល់ និង សន្លឹកកិច្ចការ)</p>
+          <p className="text-xs text-slate-400">ស្របតាមព្រំដែនកម្មវិធីសិក្សាកម្ពុជា & STEM (មានអត្ថបទនិយាយផ្ទាល់ និងសន្លឹកកិច្ចការ)</p>
         </div>
 
         {/* General Info Metadata Table */}
@@ -247,6 +333,57 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
             <span className="text-slate-400">ប្រធានបទមេរៀន៖</span>{' '}
             <strong className="text-cyan-400 text-base">{metadata.topic}</strong>
           </div>
+        </div>
+
+        <div className="space-y-4 p-5 rounded-2xl bg-blue-950/20 border border-blue-500/20">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-sm text-cyan-300 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> ព្រំដែនកម្មវិធីសិក្សា និងប្រភពបន្ថែម
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {curriculumAnchor?.scopeNoteKm || 'ប្រធានបទកំណត់ដោយគ្រូ និងត្រូវផ្ទៀងផ្ទាត់មុនផ្សព្វផ្សាយ។'}
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-slate-950 border border-slate-800 text-[10px] text-amber-300 shrink-0">
+              {publication?.status === 'published' ? 'ផ្សព្វផ្សាយ · CC BY 4.0' : 'សេចក្តីព្រាង · មិនទាន់ពិនិត្យ'}
+            </span>
+          </div>
+
+          {curriculumAnchor?.officialBookTitle && (
+            <div className="text-xs text-slate-300 space-y-1">
+              <p><strong className="text-slate-100">សៀវភៅ៖</strong> {curriculumAnchor.officialBookTitle}</p>
+              {curriculumAnchor.chapter && <p><strong className="text-slate-100">ជំពូក៖</strong> {curriculumAnchor.chapter}</p>}
+              <p><strong className="text-slate-100">មេរៀន៖</strong> {curriculumAnchor.lesson}</p>
+            </div>
+          )}
+
+          {enrichmentSources.length > 0 && (
+            <div className="space-y-2 pt-3 border-t border-slate-800">
+              <p className="text-xs font-bold text-slate-200">
+                {metadata.sourceUsage === 'prompt-reference' ? 'ប្រភពយោងដែលបានផ្តល់ទៅម៉ាស៊ីនសរសេរ៖' : 'ប្រភពណែនាំសម្រាប់គ្រូស្វែងយល់បន្ថែម៖'}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {enrichmentSources.map((source) => (
+                  <a
+                    key={source.id}
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-cyan-500/40 transition-colors group"
+                  >
+                    <span className="flex items-start justify-between gap-2">
+                      <span>
+                        <span className="block text-xs font-semibold text-cyan-300">{source.title}</span>
+                        <span className="block text-[10px] text-slate-500 mt-0.5">{source.organization} · {source.license}</span>
+                      </span>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 shrink-0" />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section 1: Objectives */}
@@ -499,6 +636,7 @@ export default function LessonPlanViewer({ lessonPlan: initialPlan, onReset }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

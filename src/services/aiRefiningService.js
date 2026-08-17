@@ -1,5 +1,7 @@
 // AI Live Refinement Service for KruAI
 // Enables teachers to modify existing lesson plans dynamically (e.g., add games, simplify materials, add exam prep)
+import { validateLessonPlan } from './qualityValidator';
+import { applyHappyChandaraTemplate } from '../data/teacherTemplateProfiles';
 
 export async function refineLessonPlan(currentPlan, refinementPrompt) {
   // Simulate AI refining delay
@@ -51,5 +53,7 @@ export async function refineLessonPlan(currentPlan, refinementPrompt) {
     planCopy.objectives.knowledge += ` (Students explain the concepts of ${planCopy.metadata.topic} in both Khmer and English.)`;
   }
 
-  return planCopy;
+  const templatedPlan = applyHappyChandaraTemplate(planCopy);
+  templatedPlan.qualityReport = validateLessonPlan(templatedPlan);
+  return templatedPlan;
 }

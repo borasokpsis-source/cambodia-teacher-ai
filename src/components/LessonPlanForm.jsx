@@ -1,13 +1,81 @@
 import React from 'react';
 import { RESOURCE_LEVELS, TEACHING_METHODS, SCIENCE_PROCESS_SKILLS } from '../data/moeysCurriculum';
-import { Sparkles, Clock, School, User, BookOpen, Layers, Cpu, Compass, Activity, Brain, Check } from 'lucide-react';
+import {
+  Sparkles,
+  Clock,
+  School,
+  User,
+  BookOpen,
+  Layers,
+  Cpu,
+  Compass,
+  Activity,
+  Check,
+  Globe2,
+  Presentation,
+  Bot,
+  Cloud,
+  WifiOff,
+  ShieldCheck,
+  AlertTriangle,
+} from 'lucide-react';
 
 export default function LessonPlanForm({
   formData,
   setFormData,
   onGenerate,
   isGenerating,
+  selectedResourceCount = 0,
+  openAIStatus = { configured: false, model: 'gpt-5.6-terra', loading: true },
+  anthropicStatus = { configured: false, model: 'claude-opus-5', loading: true },
 }) {
+  const geminiConnected = Boolean(
+    localStorage.getItem('kruai_gemini_key')?.trim() || import.meta.env.VITE_GEMINI_API_KEY?.trim(),
+  );
+  const selectedProvider = formData.aiProvider || 'anthropic';
+  const openAIUnavailable =
+    selectedProvider === 'openai' && !openAIStatus.loading && !openAIStatus.configured;
+  const openAIBlocked =
+    selectedProvider === 'openai' && (openAIStatus.loading || !openAIStatus.configured);
+  const anthropicUnavailable =
+    selectedProvider === 'anthropic' &&
+    !anthropicStatus.loading &&
+    !anthropicStatus.configured;
+  const anthropicBlocked =
+    selectedProvider === 'anthropic' &&
+    (anthropicStatus.loading || !anthropicStatus.configured);
+  const generationDisabled =
+    isGenerating || !formData.topic || openAIBlocked || anthropicBlocked;
+
+  const providerBadge = {
+    openai: {
+      label: openAIStatus.configured
+        ? `OpenAI · ${openAIStatus.model || 'configured'}`
+        : 'OpenAI · setup required',
+      className: openAIStatus.configured
+        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+        : 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    },
+    anthropic: {
+      label: anthropicStatus.configured
+        ? `Claude · ${anthropicStatus.model || 'configured'}`
+        : 'Claude · setup required',
+      className: anthropicStatus.configured
+        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+        : 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    },
+    gemini: {
+      label: geminiConnected ? 'Gemini · connected' : 'Gemini · setup required',
+      className: geminiConnected
+        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+        : 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    },
+    offline: {
+      label: 'Local Smart Engine',
+      className: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
+    },
+  }[selectedProvider];
+
   const toggleSkill = (skillId) => {
     const current = formData.selectedSkills || [];
     if (current.includes(skillId)) {
@@ -30,17 +98,109 @@ export default function LessonPlanForm({
           </p>
         </div>
         <div className="flex items-center gap-1.5 self-start sm:self-auto">
-          {localStorage.getItem('kruai_gemini_key')?.trim() || import.meta.env.VITE_GEMINI_API_KEY?.trim() ? (
-            <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1 font-khmer">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              Gemini AI Connected
-            </span>
-          ) : (
-            <span className="text-[10px] px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-semibold flex items-center gap-1 font-khmer">
-              ⚡ Local Smart Engine
-            </span>
-          )}
+          <span
+            className={`text-[10px] px-2.5 py-1 rounded-full border font-semibold flex items-center gap-1 font-khmer ${providerBadge.className}`}
+          >
+            <span className="w-2 h-2 rounded-full bg-current opacity-80"></span>
+            {providerBadge.label}
+          </span>
         </div>
+      </div>
+
+      {/* AI Provider Selector */}
+      <div className="space-y-2.5">
+        <label className="text-xs font-semibold text-slate-200 font-khmer flex items-center gap-1.5">
+          <Bot className="w-4 h-4 text-cyan-400" />
+          ម៉ាស៊ីន AI សម្រាប់បង្កើតមេរៀន (AI Provider):
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {[
+            {
+              id: 'anthropic',
+              title: 'Claude',
+              description: anthropicStatus.loading
+                ? 'កំពុងពិនិត្យការកំណត់...'
+                : anthropicStatus.configured
+                  ? `${anthropicStatus.model} · Secure server key`
+                  : 'ត្រូវកំណត់ API key នៅលើ server',
+              icon: Bot,
+              ready: anthropicStatus.configured,
+            },
+            {
+              id: 'openai',
+              title: 'OpenAI',
+              description: openAIStatus.loading
+                ? 'កំពុងពិនិត្យការកំណត់...'
+                : openAIStatus.configured
+                  ? `${openAIStatus.model} · Secure server key`
+                  : 'ត្រូវកំណត់ API key នៅលើ server',
+              icon: ShieldCheck,
+              ready: openAIStatus.configured,
+            },
+            {
+              id: 'gemini',
+              title: 'Gemini',
+              description: geminiConnected ? 'API key បានតភ្ជាប់' : 'ត្រូវបញ្ចូល API key',
+              icon: Cloud,
+              ready: geminiConnected,
+            },
+            {
+              id: 'offline',
+              title: 'Offline Draft',
+              description: 'មិនប្រើ API · គុណភាពមូលដ្ឋាន',
+              icon: WifiOff,
+              ready: true,
+            },
+          ].map((provider) => {
+            const isSelected = selectedProvider === provider.id;
+            const Icon = provider.icon;
+            return (
+              <button
+                key={provider.id}
+                type="button"
+                onClick={() => setFormData({ ...formData, aiProvider: provider.id })}
+                className={`p-3 rounded-2xl text-left transition-all border ${
+                  isSelected
+                    ? 'bg-slate-900 border-cyan-500/80 ring-1 ring-cyan-500/30'
+                    : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                }`}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-xs font-bold text-slate-100">
+                    <Icon className={`w-4 h-4 ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`} />
+                    {provider.title}
+                  </span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${provider.ready ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                  ></span>
+                </span>
+                <span className="block mt-1.5 text-[10px] text-slate-400 font-khmer leading-relaxed">
+                  {provider.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {openAIUnavailable && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+            <p className="text-[11px] leading-relaxed text-amber-200 font-khmer">
+              បន្ថែម <code className="font-mono">OPENAI_API_KEY</code> ក្នុងឯកសារ{' '}
+              <code className="font-mono">.env.local</code> ហើយចាប់ផ្ដើម server ឡើងវិញ។ API key
+              មិនត្រូវបានបញ្ជូនទៅ browser ទេ។
+            </p>
+          </div>
+        )}
+        {anthropicUnavailable && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+            <p className="text-[11px] leading-relaxed text-amber-200 font-khmer">
+              បន្ថែម <code className="font-mono">ANTHROPIC_API_KEY</code> ក្នុងឯកសារ{' '}
+              <code className="font-mono">.env.local</code> ហើយចាប់ផ្ដើម server ឡើងវិញ។ API key
+              មិនត្រូវបានបញ្ជូនទៅ browser ទេ។
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Teaching Method Selector */}
@@ -123,7 +283,7 @@ export default function LessonPlanForm({
             type="text"
             value={formData.schoolName}
             onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
-            placeholder="ឧទាហរណ៍៖ សាលារៀន ហ៊ុន សែន ភ្នំពេញ"
+            placeholder="ឧទាហរណ៍៖ សាលាហេបភីច័ន្ទតារានារីព្រែកថ្មី"
             className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-sm font-khmer text-slate-100 placeholder-slate-500 outline-none transition-all"
           />
         </div>
@@ -138,7 +298,7 @@ export default function LessonPlanForm({
             type="text"
             value={formData.teacherName}
             onChange={(e) => setFormData({ ...formData, teacherName: e.target.value })}
-            placeholder="ឧទាហរណ៍៖ គ្រូបង្រៀន អ៊ុក សុផល"
+            placeholder="ឧទាហរណ៍៖ សុខ បូរ៉ា"
             className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-sm font-khmer text-slate-100 placeholder-slate-500 outline-none transition-all"
           />
         </div>
@@ -164,8 +324,8 @@ export default function LessonPlanForm({
             <Clock className="w-3.5 h-3.5 text-cyan-400" />
             រយៈពេលបង្រៀន (Duration):
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {[45, 90].map((mins) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[45, 50, 60, 90, 120].map((mins) => (
               <button
                 key={mins}
                 type="button"
@@ -202,14 +362,74 @@ export default function LessonPlanForm({
         </div>
       </div>
 
+      <div className="p-4 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-3">
+        <div className="flex items-start gap-3">
+          <Presentation className="w-5 h-5 text-purple-300 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-purple-200 font-khmer">
+              ទម្រង់កិច្ចតែងការសាលាហេបភីច័ន្ទតារានារីព្រែកថ្មី
+            </p>
+            <p className="text-[11px] text-slate-400 font-khmer leading-relaxed">
+              ប្រើរចនាសម្ព័ន្ធព័ត៌មានទូទៅ វត្ថុបំណង ៣ សម្បទា សម្ភារឧបទេស តារាងសកម្មភាព និងសន្លឹកកិច្ចការដាច់ដោយឡែក។
+            </p>
+          </div>
+        </div>
+        <div className="pt-3 border-t border-slate-800/80 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-khmer">
+            <span className="text-slate-300">សន្លឹកកិច្ចការសិស្ស</span>
+            <span className="text-emerald-300 font-bold">រួមបញ្ចូលជានិច្ច</span>
+          </div>
+          <label className="flex items-center justify-between gap-3 cursor-pointer text-[11px] font-khmer">
+            <span className="text-slate-300">ភ្ជាប់គម្រោងស្លាយជំនួយបង្រៀន</span>
+            <input
+              type="checkbox"
+              checked={formData.includeSlides !== false}
+              onChange={(event) =>
+                setFormData({ ...formData, includeSlides: event.target.checked })
+              }
+              className="accent-purple-500"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="p-4 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 space-y-3">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={formData.allowOpenEnrichment !== false}
+            onChange={(event) =>
+              setFormData({ ...formData, allowOpenEnrichment: event.target.checked })
+            }
+            className="mt-1 accent-cyan-500"
+          />
+          <span className="space-y-1">
+            <span className="text-xs font-bold text-cyan-300 font-khmer flex items-center gap-1.5">
+              <Globe2 className="w-4 h-4" /> ប្រើធនធានអប់រំបើកចំហសម្រាប់ពង្រឹងមេរៀន
+            </span>
+            <span className="block text-[11px] text-slate-400 font-khmer leading-relaxed">
+              សៀវភៅ MoEYS កំណត់វិសាលភាពកម្មវិធីសិក្សា ខណៈធនធានបើកចំហផ្តល់គំនិតសកម្មភាព និងការពន្យល់បន្ថែម។
+            </span>
+          </span>
+        </label>
+        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px] font-khmer">
+          <span className="text-slate-500">ប្រភពដែលគ្រូបានជ្រើសដោយផ្ទាល់</span>
+          <span className="px-2.5 py-1 rounded-full bg-slate-950 text-amber-300 border border-slate-800">
+            {selectedResourceCount > 0 ? `${selectedResourceCount} ប្រភព` : 'ប្រព័ន្ធនឹងណែនាំប្រភពសមស្រប'}
+          </span>
+        </div>
+      </div>
+
       {/* Generate AI Button */}
       <div className="pt-2">
         <button
           onClick={onGenerate}
-          disabled={isGenerating || !formData.topic}
+          disabled={generationDisabled}
           className={`w-full py-4 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-3 shadow-xl ${
             isGenerating
               ? 'bg-cyan-800 text-slate-300 cursor-not-allowed opacity-80'
+              : generationDisabled
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
               : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white shadow-cyan-500/25 active:scale-[0.99]'
           }`}
         >
