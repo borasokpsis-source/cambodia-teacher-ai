@@ -77,6 +77,9 @@ CURRICULUM ANCHOR (defines scope, grade and terminology):
 - Official book: ${anchor.officialBookTitle || 'Not yet indexed'}
 - Chapter: ${anchor.chapter || 'Teacher-selected scope'}
 - Target lesson: ${anchor.lesson}
+- Teaching-session target: ${anchor.sessionTitle || anchor.lesson}
+- Selected subtitles: ${anchor.selectedSubtitles?.length ? anchor.selectedSubtitles.join('; ') : 'Whole lesson'}
+- Teacher-entered focus: ${anchor.customSessionFocus || 'None'}
 - Alignment status: ${anchor.alignmentStatus}
 
 OPEN ENRICHMENT REFERENCES:
@@ -84,6 +87,7 @@ ${sourceLines}
 
 SOURCE RULES:
 - The curriculum anchor controls WHAT is appropriate for this grade.
+- When a teaching-session target is supplied, it is a strict subset of the parent lesson. Do not teach or assess unselected subtitles.
 - Open references may enrich HOW the lesson is explained or taught.
 - Do not claim that MoEYS approved the generated lesson plan.
 - Do not copy long passages. Create an original classroom-ready lesson and preserve source traceability.

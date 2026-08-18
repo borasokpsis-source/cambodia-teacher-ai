@@ -95,6 +95,7 @@ function buildHappyChandaraWordHtml(lessonPlan) {
     <table>
       <tr><th>ជំពូក</th><td>${escapeHtml(curriculumAnchor?.chapter || 'ប្រធានបទកំណត់ដោយគ្រូ')}</td><th>មេរៀន</th><td>${escapeHtml(curriculumAnchor?.lesson)}</td></tr>
       <tr><th>ប្រធានបទ</th><td>${escapeHtml(metadata.topic)}</td><th>ថ្នាក់</th><td>${escapeHtml(metadata.grade)}</td></tr>
+      ${metadata.isSessionScoped ? `<tr><th>វិសាលភាពសម័យ</th><td colspan="3">${escapeHtml(metadata.sessionScope)}</td></tr>` : ''}
       <tr><th>មុខវិជ្ជា</th><td>${escapeHtml(metadata.subjectKm)}</td><th>រយៈពេល</th><td>${escapeHtml(metadata.duration)}</td></tr>
       <tr><th>គ្រូបង្រៀន</th><td>${escapeHtml(metadata.teacherName)}</td><th>កាលបរិច្ឆេទ</th><td>${escapeHtml(metadata.date)}</td></tr>
     </table>
@@ -121,6 +122,7 @@ export function shareToTelegram(lessonPlan) {
 
   const text = `🇰🇭 *កិច្ចតែងការបង្រៀនលម្អិត (${metadata.teachingMethodKm})* 🇰🇭
 📌 *ប្រធានបទ:* ${metadata.topic}
+${metadata.isSessionScoped ? `📖 *មេរៀនមេ:* ${metadata.parentLesson}\n🎯 *វិសាលភាពសម័យ:* ${metadata.sessionScope}` : ''}
 🏫 *សាលារៀន:* ${metadata.schoolName} | 👨‍🏫 *គ្រូបង្រៀន:* ${metadata.teacherName}
 📚 *មុខវិជ្ជា:* ${metadata.subjectKm} (${metadata.grade}) | ⏱️ *រយៈពេល:* ${metadata.duration}
 🔬 *បំណិនវិទ្យាសាស្ត្រ:* ${metadata.processSkillsKm}

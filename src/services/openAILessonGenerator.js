@@ -7,6 +7,8 @@ export function buildLessonPlanPrompt({
   subjectNameKm,
   subjectNameEn,
   topic,
+  selectedSubtitles = [],
+  customSessionFocus = '',
   durationMins,
   resourceLevel,
   methodNameKm,
@@ -15,6 +17,14 @@ export function buildLessonPlanPrompt({
   phaseTimes,
   curriculumAndSourceContext,
 }) {
+  const hasSessionScope = selectedSubtitles.length > 0 || customSessionFocus.trim();
+  const selectedSubtitleText = selectedSubtitles.length
+    ? selectedSubtitles.map((subtitle, index) => `${index + 1}. ${subtitle}`).join('\n')
+    : 'None selected';
+  const sessionTarget = [selectedSubtitles.join('; '), customSessionFocus.trim()]
+    .filter(Boolean)
+    .join('; ') || topic;
+
   return `Create a classroom-ready Cambodian lesson plan as one JSON object.
 
 LESSON CONTEXT
@@ -22,7 +32,11 @@ LESSON CONTEXT
 - Teacher: ${teacherName}
 - Grade: ${gradeLevel}
 - Subject: ${subjectNameKm} (${subjectNameEn})
-- Exact target lesson: ${topic}
+- Parent textbook lesson (curriculum boundary): ${topic}
+- Exact target for THIS teaching session: ${sessionTarget}
+- Selected textbook subtitles:
+${selectedSubtitleText}
+- Teacher-entered session focus: ${customSessionFocus.trim() || 'None'}
 - Duration: ${durationMins} minutes
 - Classroom resource level: ${resourceLevel}
 - Teaching method: ${methodNameKm} (${methodNameEn})
@@ -33,7 +47,9 @@ ${curriculumAndSourceContext}
 
 QUALITY REQUIREMENTS
 1. Write natural Khmer Unicode suitable for a Cambodian teacher. English technical terms may appear in parentheses only where useful.
-2. Teach the exact lesson, not the chapter title as a placeholder. Do not repeatedly paste the full lesson title into sentences.
+2. ${hasSessionScope
+    ? 'Teach ONLY the selected subtitles and teacher-entered session focus. Do not teach, assess, or assign content from unselected subtitles. The parent lesson may be mentioned only as brief context.'
+    : 'Teach the exact parent lesson, not the chapter title as a placeholder.'} Do not repeatedly paste the full lesson title into sentences.
 3. Include at least five accurate, grade-appropriate topic concepts or facts and at least four topic-specific technical terms.
 4. Each objective must identify observable student performance and a success criterion. Avoid combining vague verbs such as describe, explain and analyze without evidence.
 5. The inquiry or hands-on activity must name concrete materials, numbered actions, observable evidence or data, safety guidance when relevant, and thinking questions. Provide a realistic alternative when specialist equipment is unavailable.

@@ -28,6 +28,9 @@ export default function LessonLibrary({ plans, onOpen, onRemix, onCreateNew }) {
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
       const searchable = [
         plan.metadata?.topic,
+        plan.metadata?.parentLesson,
+        plan.metadata?.sessionScope,
+        ...(plan.metadata?.selectedSubtitles || []),
         plan.metadata?.subjectKm,
         plan.metadata?.subjectEn,
         plan.metadata?.teacherName,
@@ -128,6 +131,11 @@ export default function LessonLibrary({ plans, onOpen, onRemix, onCreateNew }) {
                     <h3 className="font-bold text-base text-slate-100 font-khmer mt-1 line-clamp-2">
                       {plan.metadata?.topic}
                     </h3>
+                    {plan.metadata?.isSessionScoped && (
+                      <p className="mt-1 text-[10px] text-slate-500 font-khmer line-clamp-1">
+                        មេរៀនមេ៖ {plan.metadata?.parentLesson}
+                      </p>
+                    )}
                   </div>
                   <span className={`px-2.5 py-1 rounded-full border text-[10px] font-semibold font-khmer shrink-0 ${STATUS_STYLE[status]}`}>
                     {statusLabel(status)}

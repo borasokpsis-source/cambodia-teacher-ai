@@ -225,6 +225,14 @@ export default function HappyChandaraLessonDocument({
                 <th className="border border-slate-700 p-2 bg-slate-950">ថ្នាក់</th>
                 <td className="border border-slate-700 p-2">{metadata.grade}</td>
               </tr>
+              {metadata.isSessionScoped && (
+                <tr>
+                  <th className="border border-slate-700 p-2 bg-slate-950">វិសាលភាពសម័យ</th>
+                  <td className="border border-slate-700 p-2" colSpan={3}>
+                    {metadata.sessionScope}
+                  </td>
+                </tr>
+              )}
               <tr>
                 <th className="border border-slate-700 p-2 bg-slate-950">មុខវិជ្ជា</th>
                 <td className="border border-slate-700 p-2">{metadata.subjectKm}</td>

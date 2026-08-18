@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RESOURCE_LEVELS, TEACHING_METHODS, SCIENCE_PROCESS_SKILLS } from '../data/moeysCurriculum';
+import {
+  loadLessonSubtitleOptions,
+  saveLessonSubtitleOptions,
+} from '../services/sessionSubtitleStorage';
 import {
   Sparkles,
   Clock,
@@ -18,6 +22,9 @@ import {
   WifiOff,
   ShieldCheck,
   AlertTriangle,
+  ListChecks,
+  Plus,
+  X,
 } from 'lucide-react';
 
 export default function LessonPlanForm({
@@ -29,6 +36,7 @@ export default function LessonPlanForm({
   openAIStatus = { configured: false, model: 'gpt-5.6-terra', loading: true },
   anthropicStatus = { configured: false, model: 'claude-opus-5', loading: true },
 }) {
+  const [subtitleDraft, setSubtitleDraft] = useState('');
   const geminiConnected = Boolean(
     localStorage.getItem('kruai_gemini_key')?.trim() || import.meta.env.VITE_GEMINI_API_KEY?.trim(),
   );
@@ -44,8 +52,12 @@ export default function LessonPlanForm({
   const anthropicBlocked =
     selectedProvider === 'anthropic' &&
     (anthropicStatus.loading || !anthropicStatus.configured);
+  const durationMins = Number(formData.durationMins);
+  const durationIsValid = durationMins >= 50 && durationMins <= 100;
   const generationDisabled =
-    isGenerating || !formData.topic || openAIBlocked || anthropicBlocked;
+    isGenerating || !formData.topic.trim() || !durationIsValid || openAIBlocked || anthropicBlocked;
+  const subtitleOptions = formData.subtitleOptions || [];
+  const selectedSubtitles = formData.selectedSubtitles || [];
 
   const providerBadge = {
     openai: {
@@ -83,6 +95,41 @@ export default function LessonPlanForm({
     } else {
       setFormData({ ...formData, selectedSkills: [...current, skillId] });
     }
+  };
+
+  const addSubtitleOptions = () => {
+    const additions = subtitleDraft
+      .split(/\r?\n/)
+      .map((subtitle) => subtitle.trim())
+      .filter(Boolean);
+    if (additions.length === 0) return;
+
+    const nextOptions = [...new Set([...subtitleOptions, ...additions])];
+    const nextSelected = [...new Set([...selectedSubtitles, ...additions])];
+    saveLessonSubtitleOptions(formData.topic, nextOptions);
+    setFormData({
+      ...formData,
+      subtitleOptions: nextOptions,
+      selectedSubtitles: nextSelected,
+    });
+    setSubtitleDraft('');
+  };
+
+  const toggleSubtitle = (subtitle) => {
+    const nextSelected = selectedSubtitles.includes(subtitle)
+      ? selectedSubtitles.filter((item) => item !== subtitle)
+      : [...selectedSubtitles, subtitle];
+    setFormData({ ...formData, selectedSubtitles: nextSelected });
+  };
+
+  const removeSubtitle = (subtitle) => {
+    const nextOptions = subtitleOptions.filter((item) => item !== subtitle);
+    saveLessonSubtitleOptions(formData.topic, nextOptions);
+    setFormData({
+      ...formData,
+      subtitleOptions: nextOptions,
+      selectedSubtitles: selectedSubtitles.filter((item) => item !== subtitle),
+    });
   };
 
   return (
@@ -312,10 +359,140 @@ export default function LessonPlanForm({
           <input
             type="text"
             value={formData.topic}
-            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                topic: e.target.value,
+                subtitleOptions: loadLessonSubtitleOptions(e.target.value),
+                selectedSubtitles: [],
+                customSessionFocus: '',
+              })
+            }
             placeholder="ឧទាហរណ៍៖ រស្មីសំយោគ (Photosynthesis) ឬ សមីការដឺក្រេទី១"
             className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-sm font-khmer text-slate-100 placeholder-slate-500 outline-none transition-all"
           />
+        </div>
+
+        {/* Session subtitle scope */}
+        <div className="md:col-span-2 rounded-2xl border border-cyan-500/25 bg-cyan-500/5 p-4 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+            <div>
+              <label className="text-xs font-bold text-cyan-200 font-khmer flex items-center gap-1.5">
+                <ListChecks className="w-4 h-4 text-cyan-400" />
+                ចំណងជើងរងសម្រាប់សម័យបង្រៀននេះ (Session Subtitles)
+              </label>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-400 font-khmer">
+                បញ្ចូលចំណងជើងរងមួយក្នុងមួយបន្ទាត់ ហើយជ្រើសតែខ្លឹមសារដែលត្រូវបង្រៀនក្នុងសម័យនេះ។ បើមិនជ្រើស ប្រព័ន្ធនឹងរៀបចំមេរៀនទាំងមូល។
+              </p>
+            </div>
+            {subtitleOptions.length > 0 && (
+              <span className="shrink-0 rounded-full border border-cyan-500/25 bg-slate-950 px-2.5 py-1 text-[10px] font-khmer text-cyan-300">
+                បានជ្រើស {selectedSubtitles.length}/{subtitleOptions.length}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <textarea
+              value={subtitleDraft}
+              onChange={(event) => setSubtitleDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  event.preventDefault();
+                  addSubtitleOptions();
+                }
+              }}
+              rows={2}
+              placeholder={'ឧទាហរណ៍៖\n១. និយមន័យល្បឿន\n២. រូបមន្ត និងឯកតាល្បឿន'}
+              className="min-h-20 flex-1 resize-y rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-khmer"
+            />
+            <button
+              type="button"
+              onClick={addSubtitleOptions}
+              disabled={!subtitleDraft.trim()}
+              className="sm:self-stretch inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 font-khmer"
+            >
+              <Plus className="w-4 h-4" /> បន្ថែម
+            </button>
+          </div>
+
+          {subtitleOptions.length > 0 && (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap gap-2">
+                {subtitleOptions.map((subtitle) => {
+                  const isSelected = selectedSubtitles.includes(subtitle);
+                  return (
+                    <div
+                      key={subtitle}
+                      className={`inline-flex items-stretch overflow-hidden rounded-xl border transition-colors ${
+                        isSelected
+                          ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-100'
+                          : 'border-slate-700 bg-slate-900/70 text-slate-400'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggleSubtitle(subtitle)}
+                        className="inline-flex items-center gap-2 px-3 py-2 text-left text-xs font-khmer"
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                            isSelected
+                              ? 'border-cyan-400 bg-cyan-500 text-slate-950'
+                              : 'border-slate-600 bg-slate-950'
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </span>
+                        {subtitle}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeSubtitle(subtitle)}
+                        aria-label={`Remove ${subtitle}`}
+                        className="border-l border-current/15 px-2 text-current/60 transition-colors hover:bg-rose-500/15 hover:text-rose-300"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, selectedSubtitles: [...subtitleOptions] })}
+                  className="text-[10px] font-semibold text-cyan-300 hover:text-cyan-200 font-khmer"
+                >
+                  ជ្រើសទាំងអស់
+                </button>
+                <span className="text-slate-700">•</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, selectedSubtitles: [] })}
+                  className="text-[10px] font-semibold text-slate-400 hover:text-slate-200 font-khmer"
+                >
+                  ដកការជ្រើសទាំងអស់
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5 border-t border-slate-800/80 pt-3">
+            <label className="text-[11px] font-semibold text-slate-300 font-khmer">
+              សរសេរគោលដៅបន្ថែមដោយផ្ទាល់ (Optional custom focus)
+            </label>
+            <textarea
+              value={formData.customSessionFocus || ''}
+              onChange={(event) =>
+                setFormData({ ...formData, customSessionFocus: event.target.value })
+              }
+              rows={2}
+              placeholder="ឧទាហរណ៍៖ ផ្តោតលើការគណនាល្បឿនពីឧទាហរណ៍ទំព័រ ២៤–២៥ និងមិនទាន់បង្រៀនវ៉ិចទ័រល្បឿន។"
+              className="w-full resize-y rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-khmer"
+            />
+          </div>
         </div>
 
         {/* Duration Mins */}
@@ -325,7 +502,7 @@ export default function LessonPlanForm({
             រយៈពេលបង្រៀន (Duration):
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {[45, 50, 60, 90, 120].map((mins) => (
+            {[50, 60, 75, 90, 100].map((mins) => (
               <button
                 key={mins}
                 type="button"
@@ -339,7 +516,29 @@ export default function LessonPlanForm({
                 <span className="font-khmer">{mins} នាទី ({mins} mins)</span>
               </button>
             ))}
+            <label className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-[10px] text-slate-500 font-khmer">
+              ផ្សេងទៀត (50–100)
+              <input
+                type="number"
+                min="50"
+                max="100"
+                value={formData.durationMins}
+                onChange={(event) =>
+                  setFormData({ ...formData, durationMins: event.target.value })
+                }
+                onBlur={() =>
+                  setFormData({
+                    ...formData,
+                    durationMins: Math.min(100, Math.max(50, Number(formData.durationMins) || 50)),
+                  })
+                }
+                className="mt-0.5 w-full bg-transparent text-xs font-bold text-slate-200 outline-none"
+              />
+            </label>
           </div>
+          {!durationIsValid && (
+            <p className="text-[10px] text-rose-300 font-khmer">រយៈពេលសម័យបង្រៀនត្រូវចន្លោះពី 50 ដល់ 100 នាទី។</p>
+          )}
         </div>
 
         {/* Resource Level */}

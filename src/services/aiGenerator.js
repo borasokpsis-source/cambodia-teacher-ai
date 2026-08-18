@@ -33,6 +33,8 @@ export async function generateMoEYSLessonPlan({
   subjectNameKm = 'ជីវវិទ្យា',
   subjectNameEn = 'Biology',
   topic = 'ជំពូកទី ១៖ ភាពចម្រុះនៃជីវិត - មេរៀនទី ៣៖ ប្រូទីស',
+  selectedSubtitles = [],
+  customSessionFocus = '',
   durationMins = 90,
   resourceLevel = 'medium',
   teachingMethod = '5e_model',
@@ -44,8 +46,9 @@ export async function generateMoEYSLessonPlan({
   apiKey = '',
 }) {
   // Check if API key is provided directly, stored in localStorage, or configured in environment
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-  const activeKey = apiKey || localStorage.getItem('kruai_gemini_key') || envKey || '';
+  const envKey = import.meta.env?.VITE_GEMINI_API_KEY || '';
+  const activeKey =
+    apiKey || globalThis.localStorage?.getItem('kruai_gemini_key') || envKey || '';
 
   const dateStr = new Date().toLocaleDateString('km-KH', {
     year: 'numeric',
@@ -57,13 +60,45 @@ export async function generateMoEYSLessonPlan({
   const processSkillsList = SCIENCE_PROCESS_SKILLS.filter((s) => selectedSkills.includes(s.id));
   const processSkillsKm = processSkillsList.map((s) => s.nameKm).join(', ') || 'ការសង្កេត, ការពិសោធន៍/អនុវត្តផ្ទាល់, ការបកស្រាយទិន្នន័យ';
   const phaseTimes = getPhaseTimes(durationMins);
-  const curriculumAnchor = resolveCurriculumAnchor({
+  const normalizedSubtitles = [...new Set(
+    (Array.isArray(selectedSubtitles) ? selectedSubtitles : [])
+      .map((subtitle) => String(subtitle).trim())
+      .filter(Boolean)
+  )];
+  const normalizedCustomFocus = String(customSessionFocus || '').trim();
+  const hasRestrictedSessionScope =
+    normalizedSubtitles.length > 0 || Boolean(normalizedCustomFocus);
+  const sessionTitle =
+    normalizedSubtitles.join(' · ') || normalizedCustomFocus || topic;
+  const contentTarget = [normalizedSubtitles.join('; '), normalizedCustomFocus]
+    .filter(Boolean)
+    .join('; ') || topic;
+  const sessionMetadata = {
+    topic: sessionTitle,
+    parentLesson: topic,
+    sessionTitle,
+    selectedSubtitles: normalizedSubtitles,
+    customSessionFocus: normalizedCustomFocus,
+    sessionScope: contentTarget,
+    isSessionScoped: hasRestrictedSessionScope,
+  };
+  const curriculumBaseAnchor = resolveCurriculumAnchor({
     gradeLevel,
     subjectId,
     subjectNameKm,
     subjectNameEn,
     topic,
   });
+  const curriculumAnchor = {
+    ...curriculumBaseAnchor,
+    sessionTitle,
+    selectedSubtitles: normalizedSubtitles,
+    customSessionFocus: normalizedCustomFocus,
+    sessionScope: contentTarget,
+    scopeNoteKm: hasRestrictedSessionScope
+      ? 'មេរៀនក្នុងសៀវភៅពុម្ពជាព្រំដែនកម្មវិធីសិក្សា; កិច្ចតែងការនេះបង្រៀន និងវាយតម្លៃតែចំណងជើងរង ឬគោលដៅសម័យដែលបានជ្រើសប៉ុណ្ណោះ។'
+      : curriculumBaseAnchor.scopeNoteKm,
+  };
   const selectedEnrichmentSources = selectEnrichmentSources({
     subjectId,
     selectedSources: enrichmentSources,
@@ -106,6 +141,8 @@ export async function generateMoEYSLessonPlan({
         subjectNameKm,
         subjectNameEn,
         topic,
+        selectedSubtitles: normalizedSubtitles,
+        customSessionFocus: normalizedCustomFocus,
         durationMins,
         resourceLevel,
         methodNameKm: methodObj.nameKm,
@@ -133,7 +170,7 @@ export async function generateMoEYSLessonPlan({
           grade: `ថ្នាក់ទី ${gradeLevel}`,
           subjectKm: subjectNameKm,
           subjectEn: subjectNameEn,
-          topic,
+          ...sessionMetadata,
           duration: `${durationMins} នាទី (Minutes)`,
           durationMins,
           date: dateStr,
@@ -152,7 +189,7 @@ export async function generateMoEYSLessonPlan({
           contentProfile: 'topic-specific',
         },
         objectives: responseJson.objectives,
-        blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${topic}`,
+        blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${sessionTitle}`,
         misconceptionsAlert: responseJson.misconceptionsAlert,
         differentiatedInstruction: responseJson.differentiatedInstruction,
         assessmentRubric: responseJson.assessmentRubric,
@@ -184,6 +221,8 @@ export async function generateMoEYSLessonPlan({
         subjectNameKm,
         subjectNameEn,
         topic,
+        selectedSubtitles: normalizedSubtitles,
+        customSessionFocus: normalizedCustomFocus,
         durationMins,
         resourceLevel,
         methodNameKm: methodObj.nameKm,
@@ -212,7 +251,7 @@ export async function generateMoEYSLessonPlan({
             grade: `ថ្នាក់ទី ${gradeLevel}`,
             subjectKm: subjectNameKm,
             subjectEn: subjectNameEn,
-            topic,
+            ...sessionMetadata,
             duration: `${durationMins} នាទី (Minutes)`,
             durationMins,
             date: dateStr,
@@ -232,7 +271,7 @@ export async function generateMoEYSLessonPlan({
             contentProfile: 'topic-specific',
           },
           objectives: responseJson.objectives,
-          blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${topic}`,
+          blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${sessionTitle}`,
           misconceptionsAlert: responseJson.misconceptionsAlert,
           differentiatedInstruction: responseJson.differentiatedInstruction,
           assessmentRubric: responseJson.assessmentRubric,
@@ -268,7 +307,10 @@ Lesson Context:
 - Teacher: ${teacherName}
 - Grade: Grade ${gradeLevel} (ថ្នាក់ទី ${gradeLevel})
 - Subject: ${subjectNameKm} (${subjectNameEn})
-- Topic: ${topic}
+- Parent textbook lesson: ${topic}
+- Exact target for this teaching session: ${contentTarget}
+- Selected subtitles: ${normalizedSubtitles.length ? normalizedSubtitles.join('; ') : 'Whole lesson'}
+- Teacher-entered session focus: ${normalizedCustomFocus || 'None'}
 - Duration: ${durationMins} minutes
 - Teaching Framework: ${methodObj.nameKm} (${methodObj.nameEn})
 - Target Science Process Skills: ${processSkillsKm}
@@ -276,9 +318,9 @@ Lesson Context:
 ${curriculumAndSourceContext}
 
 CRITICAL INSTRUCTIONS FOR TOPIC ACCURACY & QUALITY:
-1. The target lesson topic is EXACTLY: "${topic}".
-2. Every section of the lesson plan (Objectives, Blackboard Notes, Misconceptions Alert, Differentiated Instruction, Assessment Rubric, Hands-On Activity/Experiment, Teaching Aids, Teacher Dialogue, Student Responses, and complete 5-question Worksheet with Answer Key) MUST stay specific to the topic "${topic}" and within the stated curriculum boundary.
-3. DO NOT output content for any unrelated topic. For example, if the topic is "${topic}", do NOT write about Photosynthesis or Levers unless the topic itself explicitly asks for Photosynthesis or Levers.
+1. The parent textbook lesson is "${topic}", and the exact target for THIS session is "${contentTarget}".
+2. Every section of the lesson plan (Objectives, Blackboard Notes, Misconceptions Alert, Differentiated Instruction, Assessment Rubric, Hands-On Activity/Experiment, Teaching Aids, Teacher Dialogue, Student Responses, and complete 5-question Worksheet with Answer Key) MUST stay specific to "${contentTarget}" and within the parent lesson boundary.
+3. ${hasRestrictedSessionScope ? 'Teach and assess ONLY the selected subtitles and teacher-entered focus. Do not include unselected subtitles except as one brief contextual connection.' : 'Cover the parent lesson as the session target.'} DO NOT output content for an unrelated topic.
 4. Provide realistic Khmer teacher dialogue scripts ("🗣️ **ពាក្យសម្តីគ្រូនិយាយផ្ទាល់៖**..."), expected student responses ("🙋‍♂️ **ចម្លើយសិស្សរំពឹងទុក៖**..."), and curriculum-aligned Khmer terminology.
 5. The five teaching phase times MUST add up to exactly ${durationMins} minutes. Use this allocation: ${phaseTimes.join(' + ')} minutes.
 
@@ -312,7 +354,7 @@ Return ONLY valid JSON matching this exact structure:
     ]
   },
   "handsOnActivity": {
-    "title": "សកម្មភាពអនុវត្តផ្ទាល់ដៃ: ${topic}",
+    "title": "សកម្មភាពអនុវត្តផ្ទាល់ដៃ: ${sessionTitle}",
     "materialsNeeded": ["...", "..."],
     "steps": ["...", "..."],
     "thinkingPrompts": ["...", "..."]
@@ -361,7 +403,7 @@ Return ONLY valid JSON matching this exact structure:
     }
   ],
   "fullWorksheet": {
-    "title": "សន្លឹកកិច្ចការសិស្ស ៥ សំណួរពេញលេញ: ${topic}",
+    "title": "សន្លឹកកិច្ចការសិស្ស ៥ សំណួរពេញលេញ: ${sessionTitle}",
     "instructions": "ឈ្មោះសិស្ស៖ ............................................. ថ្នាក់ទី៖ ......... កាលបរិច្ឆេទ៖ .....................",
     "sections": [
       {
@@ -441,7 +483,7 @@ Return ONLY valid JSON matching this exact structure:
             grade: `ថ្នាក់ទី ${gradeLevel}`,
             subjectKm: subjectNameKm,
             subjectEn: subjectNameEn,
-            topic,
+            ...sessionMetadata,
             duration: `${durationMins} នាទី (Minutes)`,
             durationMins,
             date: dateStr,
@@ -457,7 +499,7 @@ Return ONLY valid JSON matching this exact structure:
             aiModelUsed: usedModel,
           },
           objectives: responseJson.objectives,
-          blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${topic}`,
+          blackboardSummary: responseJson.blackboardSummary || `មេរៀន៖ ${sessionTitle}`,
           misconceptionsAlert: responseJson.misconceptionsAlert,
           differentiatedInstruction: responseJson.differentiatedInstruction,
           assessmentRubric: responseJson.assessmentRubric,
@@ -486,13 +528,16 @@ Return ONLY valid JSON matching this exact structure:
   // -------------------------------------------------------------
   await new Promise((res) => setTimeout(res, 1000));
 
-  const topicLower = topic.toLowerCase();
-  const isProtist = topicLower.includes('ប្រូទីស') || topicLower.includes('protist');
-  const isPhotosynthesis = topicLower.includes('រស្មីសំយោគ') || topicLower.includes('photosynthesis');
+  const topicLower = contentTarget.toLowerCase();
+  const isProtist = !hasRestrictedSessionScope &&
+    (topicLower.includes('ប្រូទីស') || topicLower.includes('protist'));
+  const isPhotosynthesis = !hasRestrictedSessionScope &&
+    (topicLower.includes('រស្មីសំយោគ') || topicLower.includes('photosynthesis'));
   const isSpeedVelocity =
-    topicLower.includes('វ៉ិចទ័រល្បឿន') ||
-    topicLower.includes('velocity') ||
-    topicLower.includes('speed and velocity');
+    !hasRestrictedSessionScope &&
+    (topicLower.includes('វ៉ិចទ័រល្បឿន') ||
+      topicLower.includes('velocity') ||
+      topicLower.includes('speed and velocity'));
 
   let blackboardSummary = '';
   let misconceptionsAlert = null;
@@ -776,29 +821,29 @@ Return ONLY valid JSON matching this exact structure:
   } else {
     // Dynamic Fallback for ANY other topic
     objectives = {
-      knowledge: `សិស្សអាចរៀបរាប់ ពន្យល់ និង វិភាគពីខ្លឹមសារគ្រឹះនៃ ${topic} តាមរយៈសកម្មភាព ${methodObj.nameKm} បានយ៉ាងច្បាស់លាស់។`,
+      knowledge: `សិស្សអាចរៀបរាប់ ពន្យល់ និង វិភាគពីខ្លឹមសារគ្រឹះនៃ ${contentTarget} តាមរយៈសកម្មភាព ${methodObj.nameKm} បានយ៉ាងច្បាស់លាស់។`,
       skills: `សិស្សអភិវឌ្ឍបំណិនដំណើរការវិទ្យាសាស្ត្រ (${processSkillsKm}) តាមរយៈសកម្មភាពអនុវត្តផ្ទាល់ និង ការដោះស្រាយបញ្ហាជាក់ស្តែង។`,
       attitude: `បណ្ដុះស្មារតីសិស្សឱ្យមានគំនិតច្នៃប្រឌិត ចង់ដឹងចង់ឃើញ និង មានទំនួលខុសត្រូវក្នុងការរៀនសូត្រ។`,
     };
 
-    blackboardSummary = `មេរៀន៖ ${topic}\n១. និយមន័យគ្រឹះ៖ ការសិក្សា និង ការយល់ដឹងពីទ្រឹស្តីសំខាន់ៗនៃ ${topic}។\n២. ចំណុចគន្លឹះ៖\n   - ការស្វែងយល់ពីទំនាក់ទំនងរវាងកត្តាផ្សេងៗ និង ការអនុវត្តផ្ទាល់។\n   - ការភ្ជាប់ទ្រឹស្តីទៅនឹងការដោះស្រាយបញ្ហាក្នុងសហគមន៍កម្ពុជា។`;
+    blackboardSummary = `មេរៀន៖ ${sessionTitle}\nវិសាលភាពសម័យ៖ ${contentTarget}\n១. និយមន័យគ្រឹះ៖ ការសិក្សា និងការយល់ដឹងពីខ្លឹមសារដែលបានជ្រើស។\n២. ចំណុចគន្លឹះ៖\n   - ការស្វែងយល់ពីទំនាក់ទំនងរវាងកត្តាផ្សេងៗ និងការអនុវត្តផ្ទាល់។\n   - ការភ្ជាប់ខ្លឹមសារដែលបានជ្រើសទៅនឹងការដោះស្រាយបញ្ហាក្នុងសហគមន៍កម្ពុជា។`;
 
     misconceptionsAlert = {
       title: `⚠️ ការយល់ច្រឡំប្រចាំមេរៀន និងវិធីកែសម្រួលគំនិត`,
-      commonMisconception: `សិស្សតែងតែយល់ច្រឡំថា ${topic} មានន័យតែក្នុងសៀវភៅពុម្ព និង មិនមានទំនាក់ទំនងជាមួយជីវភាពរស់នៅ។`,
-      diagnosticQuestion: `❓ "តើ ${topic} មានប្រយោជន៍អ្វីខ្លះក្នុងជីវភាពរស់នៅប្រចាំថ្ងៃ?"`,
+      commonMisconception: `សិស្សតែងតែយល់ច្រឡំថា ${contentTarget} មានន័យតែក្នុងសៀវភៅពុម្ព និងមិនមានទំនាក់ទំនងជាមួយជីវភាពរស់នៅ។`,
+      diagnosticQuestion: `❓ "តើ ${contentTarget} មានប្រយោជន៍អ្វីខ្លះក្នុងជីវភាពរស់នៅប្រចាំថ្ងៃ?"`,
       teacherIntervention: `💡 គ្រូបង្ហាញរូបភាព/វត្ថុជាក់ស្តែងដើម្បីឱ្យសិស្សបានឃើញទំនាក់ទំនងផ្ទាល់។`,
     };
 
     handsOnActivity = {
-      title: `សកម្មភាពអនុវត្តផ្ទាល់ដៃ៖ ${topic}`,
+      title: `សកម្មភាពអនុវត្តផ្ទាល់ដៃ៖ ${sessionTitle}`,
       materialsNeeded: ['សៀវភៅពុម្ព', 'សម្ភារកែច្នៃក្នុងស្រុក', 'សន្លឹកកិច្ចការសង្កេតក្រុម'],
       steps: [
-        `១. ចែកសិស្សជា ៤ ក្រុម និង ណែនាំកិច្ចការស្វែងយល់ស្ដីពី ${topic}។`,
+        `១. ចែកសិស្សជា ៤ ក្រុម និងណែនាំកិច្ចការស្វែងយល់ស្ដីពី ${contentTarget}។`,
         '២. សិស្សធ្វើការពិភាក្សា និង អនុវត្តកិច្ចការតាមសន្លឹកណែនាំ។',
         '៣. កត់ត្រាទិន្នន័យ និង រៀបចំរាយការណ៍ជូនថ្នាក់។',
       ],
-      thinkingPrompts: [`• "តើប្អូនៗអាចអនុវត្ត ${topic} ក្នុងជីវភាពរស់នៅយ៉ាងដូចម្តេច?"`],
+      thinkingPrompts: [`• "តើប្អូនៗអាចអនុវត្ត ${contentTarget} ក្នុងជីវភាពរស់នៅយ៉ាងដូចម្តេច?"`],
     };
 
     processMatrix = [
@@ -806,7 +851,7 @@ Return ONLY valid JSON matching this exact structure:
         stepIndex: 1,
         stepNameKm: '១. ចូលរួម (ENGAGE)',
         timeMins: 5,
-        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូនិយាយផ្ទាល់៖**\n"សួស្តីប្អូនៗ! តើប្អូនៗធ្លាប់បានដឹង ឬ ជួបប្រទះ ${topic} ដែរឬទេ?"`,
+        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូនិយាយផ្ទាល់៖**\n"សួស្តីប្អូនៗ! តើប្អូនៗធ្លាប់បានដឹង ឬជួបប្រទះ ${contentTarget} ដែរឬទេ?"`,
         studentActivity: `🙋‍♂️ **ចម្លើយសិស្សរំពឹងទុក៖**\n"សិស្សឆ្លើយ និង បង្ហាញការចាប់អារម្មណ៍ចង់ដឹងពីមេរៀនថ្មី!"`,
         evaluation: 'សង្កេតការចាប់អារម្មណ៍',
       },
@@ -814,7 +859,7 @@ Return ONLY valid JSON matching this exact structure:
         stepIndex: 2,
         stepNameKm: '២. ស្វែងយល់ (EXPLORE)',
         timeMins: 15,
-        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូណែនាំ៖**\n"សូមប្អូនៗធ្វើការជាក្រុមស្វែងយល់ពី ${topic} តាមសន្លឹកកិច្ចការ!"`,
+        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូណែនាំ៖**\n"សូមប្អូនៗធ្វើការជាក្រុមស្វែងយល់ពី ${contentTarget} តាមសន្លឹកកិច្ចការ!"`,
         studentActivity: `🙋‍♂️ **សកម្មភាពសិស្ស៖**\n• សិស្សធ្វើការជាក្រុម កត់ត្រាទិន្នន័យ និង ពិភាក្សា។`,
         evaluation: 'វាយតម្លៃបំណិនក្រុម',
       },
@@ -830,7 +875,7 @@ Return ONLY valid JSON matching this exact structure:
         stepIndex: 4,
         stepNameKm: '៤. ពង្រីក (ELABORATE)',
         timeMins: 10,
-        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូ៖** "ដាក់សំណួរពង្រីកចំណេះដឹងទាក់ទងនឹង ${topic}!"`,
+        teacherActivity: `🗣️ **ពាក្យសម្តីគ្រូ៖** "ដាក់សំណួរពង្រីកចំណេះដឹងទាក់ទងនឹង ${contentTarget}!"`,
         studentActivity: `🙋‍♂️ **សិស្ស៖** ពិភាក្សាដោះស្រាយសំណួរពង្រីក។`,
         evaluation: 'ត្រួតពិនិត្យ',
       },
@@ -845,7 +890,7 @@ Return ONLY valid JSON matching this exact structure:
     ];
 
     fullWorksheet = {
-      title: `សន្លឹកកិច្ចការសិស្ស ៥ សំណួរ៖ ${topic}`,
+      title: `សន្លឹកកិច្ចការសិស្ស ៥ សំណួរ៖ ${sessionTitle}`,
       instructions: 'ឈ្មោះសិស្ស៖ ............................................. ថ្នាក់ទី៖ .........',
       sections: [
         {
@@ -853,10 +898,10 @@ Return ONLY valid JSON matching this exact structure:
           questions: [
             {
               id: 1,
-              question: `តើចំណុចសំខាន់នៃ ${topic} គឺអ្វី?`,
+              question: `តើចំណុចសំខាន់នៃ ${contentTarget} គឺអ្វី?`,
               options: ['ក. ទ្រឹស្តី និង ការអនុវត្ត', 'ខ. គ្មានប្រយោជន៍', 'គ. មិនច្បាស់លាស់', 'ឃ. ផ្សេងៗ'],
               correctAnswer: 'ក. ទ្រឹស្តី និង ការអនុវត្ត',
-              explanation: `ការយល់ដឹងពី ${topic} ជួយដោះស្រាយបញ្ហាក្នុងជីវភាព។`,
+              explanation: `ការយល់ដឹងពី ${contentTarget} ជួយដោះស្រាយបញ្ហាក្នុងជីវភាព។`,
             },
             {
               id: 2,
@@ -872,7 +917,7 @@ Return ONLY valid JSON matching this exact structure:
           questions: [
             {
               id: 3,
-              question: `${topic} មានសារៈសំខាន់ក្នុងការស្វែងយល់ពី .....................................។`,
+              question: `${contentTarget} មានសារៈសំខាន់ក្នុងការស្វែងយល់ពី .....................................។`,
               correctAnswer: 'បាតុភូតធម្មជាតិ និង ជីវិតរស់នៅ',
               explanation: 'ការភ្ជាប់មេរៀនទៅនឹងជីវិតពិត។',
             },
@@ -889,8 +934,8 @@ Return ONLY valid JSON matching this exact structure:
           questions: [
             {
               id: 5,
-              question: `ចូរបកស្រាយពីការអនុវត្ត ${topic} ក្នុងសហគមន៍បច្ចុប្បន្ន?`,
-              correctAnswer: `ការតភ្ជាប់ទ្រឹស្តីមេរៀន ${topic} ទៅនឹងការដោះស្រាយបញ្ហាក្នុងសហគមន៍កម្ពុជា។`,
+              question: `ចូរបកស្រាយពីការអនុវត្ត ${contentTarget} ក្នុងសហគមន៍បច្ចុប្បន្ន?`,
+              correctAnswer: `ការតភ្ជាប់ខ្លឹមសារ ${contentTarget} ទៅនឹងការដោះស្រាយបញ្ហាក្នុងសហគមន៍កម្ពុជា។`,
               explanation: 'ស្ទង់មើលការគិតកម្រិតខ្ពស់របស់សិស្ស។',
             },
           ],
@@ -913,7 +958,7 @@ Return ONLY valid JSON matching this exact structure:
       grade: `ថ្នាក់ទី ${gradeLevel}`,
       subjectKm: subjectNameKm,
       subjectEn: subjectNameEn,
-      topic,
+      ...sessionMetadata,
       duration: `${durationMins} នាទី (Minutes)`,
       durationMins,
       date: dateStr,
@@ -944,14 +989,14 @@ Return ONLY valid JSON matching this exact structure:
     misconceptionsAlert,
     differentiatedInstruction: {
       title: `🪜 ការបង្រៀនតាមកម្រិតសមត្ថភាពសិស្ស (Differentiated Instruction)`,
-      fastLearners: `🚀 **សិស្សរៀនលឿន/ពូកែ (Advanced):** ផ្តល់សំណួរវិភាគកម្រិតខ្ពស់ទាក់ទងនឹង ${topic} និង ចាត់តាំងជាប្រធានក្រុម។`,
+      fastLearners: `🚀 **សិស្សរៀនលឿន/ពូកែ (Advanced):** ផ្តល់សំណួរវិភាគកម្រិតខ្ពស់ទាក់ទងនឹង ${contentTarget} និងចាត់តាំងជាប្រធានក្រុម។`,
       strugglingLearners: `🪜 **សិស្សរៀនយឺត (Struggling):** ផ្តល់កាតរូបភាពជំនួយ ផ្គូផ្គងជាមួយសិស្សរៀនលឿន (Peer Buddy) និង ជួយកត់ត្រាទិន្នន័យ។`,
       specialNeeds: `♿ **ការអប់រំបរិយាបន្ន:** រៀបចំឱ្យសិស្សអង្គុយជួរមុខ និង ផ្តល់សម្ភារទំហំធំងាយមើល។`,
     },
     assessmentRubric: {
       title: `📊 រ៉ូប៊្រីកវាយតម្លៃកម្រិតសមត្ថភាពសិស្ស`,
       levels: [
-        { levelKm: 'កម្រិត ៤ - ល្អប្រសើរ (90-100%)', criteria: `យល់ដឹងជៅជ្រះពី ${topic}, ធ្វើសកម្មភាពពិសោធន៍ និង បកស្រាយទិន្នន័យបានឥតខ្ចោះ។`, badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+        { levelKm: 'កម្រិត ៤ - ល្អប្រសើរ (90-100%)', criteria: `យល់ដឹងជៅជ្រះពី ${contentTarget}, ធ្វើសកម្មភាពពិសោធន៍ និងបកស្រាយទិន្នន័យបានឥតខ្ចោះ។`, badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
         { levelKm: 'កម្រិត ៣ - ល្អ (75-89%)', criteria: `យល់ខ្លឹមសារគ្រឹះ, ចូលរួមសកម្មភាពក្រុម និង ឆ្លើយសំណួរបានត្រឹមត្រូវភាគច្រើន។`, badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' },
         { levelKm: 'កម្រិត ២ - មធ្យម (60-74%)', criteria: `យល់ខ្លឹមសារខ្លះៗ, ត្រូវការជំនួយពីគ្រូ ឬ មិត្តភក្តិក្នុងការកត់ត្រាទិន្នន័យ។`, badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
         { levelKm: 'កម្រិត ១ - ត្រូវកែលម្អ (<60%)', criteria: `មិនទាន់យល់ដឹង និង ត្រូវការការបង្រៀនផ្ទាល់បន្ថែម (Remediation)។`, badgeColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },

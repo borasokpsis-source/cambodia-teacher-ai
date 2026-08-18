@@ -10,6 +10,7 @@ import { SUBJECTS_BY_LEVEL } from './data/moeysCurriculum';
 import { OPEN_EDUCATIONAL_RESOURCES } from './data/openEducationalResources';
 import { getOpenAIStatus } from './services/openAIClient';
 import { getAnthropicStatus } from './services/anthropicClient';
+import { loadLessonSubtitleOptions } from './services/sessionSubtitleStorage';
 import {
   loadLessonLibrary,
   loadTeacherResources,
@@ -25,18 +26,21 @@ export default function App() {
   const [selectedGrade, setSelectedGrade] = useState(8);
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS_BY_LEVEL.lower_secondary[0]); // Science official
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     schoolName: 'សាលាហេបភីច័ន្ទតារានារីព្រែកថ្មី',
     teacherName: 'សុខ បូរ៉ា',
     topic: 'ល្បឿន និងវ៉ិចទ័រល្បឿន',
-    durationMins: 45,
+    subtitleOptions: loadLessonSubtitleOptions('ល្បឿន និងវ៉ិចទ័រល្បឿន'),
+    selectedSubtitles: [],
+    customSessionFocus: '',
+    durationMins: 50,
     resourceLevel: 'medium',
     teachingMethod: '5e_model',
     selectedSkills: ['observing', 'experimenting', 'interpreting'],
     allowOpenEnrichment: true,
     includeSlides: true,
     aiProvider: 'anthropic',
-  });
+  }));
 
   const [generatedPlan, setGeneratedPlan] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,7 +92,13 @@ export default function App() {
   }, []);
 
   const handleTopicSelect = (topicTitle) => {
-    setFormData((prev) => ({ ...prev, topic: topicTitle }));
+    setFormData((prev) => ({
+      ...prev,
+      topic: topicTitle,
+      subtitleOptions: loadLessonSubtitleOptions(topicTitle),
+      selectedSubtitles: [],
+      customSessionFocus: '',
+    }));
   };
 
   const handleGenerate = async () => {
@@ -102,6 +112,8 @@ export default function App() {
         subjectNameKm: selectedSubject?.nameKm || 'គណិតវិទ្យា',
         subjectNameEn: selectedSubject?.nameEn || 'Mathematics',
         topic: formData.topic,
+        selectedSubtitles: formData.selectedSubtitles,
+        customSessionFocus: formData.customSessionFocus,
         durationMins: formData.durationMins,
         resourceLevel: formData.resourceLevel,
         teachingMethod: formData.teachingMethod,
